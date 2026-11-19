@@ -225,7 +225,8 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
             log_row({"step": step, "loss": round(float(np.mean(loss_log)), 5), "grad_norm": round(float(gnorm), 4),
                      "lr": opt.param_groups[0]["lr"], "tok_per_s": round(tok_log / dt), "skipped_steps": int(skipped),
                      "loss_scale": scaler.get_scale() if scaler.is_enabled() else None,
-                     "mem_gb": round(torch.cuda.max_memory_allocated() / 2**30, 2) if torch.cuda.is_available() else None})
+                     "mem_gb": round(torch.cuda.max_memory_allocated(torch.device(cfg.device)) / 2**30, 2)
+                     if torch.cuda.is_available() and torch.device(cfg.device).type == "cuda" else None})
             t_log, tok_log, loss_log = time.time(), 0, []
         if step % cfg.eval_every == 0 and step != total_steps:
             run_eval()
