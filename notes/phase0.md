@@ -75,5 +75,5 @@ and `src.report` on the saved checkpoint. Only proves the code path works on rea
 32 test rows, padded length 718: fp16 logits finite (range 11.25 to 25.94); PrefixLM mask honoured (max |prefix − causal| 9.1);
 forward 17.6 s including CUDA warm-up (not a training speed). Padding invariance printed exactly 0.0, which is uninformative because the
 checked row (index 3) may have been the longest, i.e. unpadded; the probe now checks the shortest row. Zero-shot 0.531 vs ~0.404 chance
-on 32 rows with an untrained readout: noise. GPU model not recorded. Setup issues found: Kaggle's torchao 0.10 breaks peft
+on 32 rows with an untrained readout: noise. Accelerator: Kaggle T4 ×2 (probe uses cuda:0). Re-run with the fixed probe: padding invariance on row 25 (127 tokens, batch padded to 718) max |diff| = 0.015625, i.e. one fp16 rounding step at logit magnitude 16–32 → VERIFIED padding-invariant in fp16. Setup issues found: Kaggle's torchao 0.10 breaks peft
 (`pip uninstall -y torchao`); `src/data` was missing from the repo (gitignore bug, fixed in `64c2367`).
