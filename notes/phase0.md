@@ -70,3 +70,10 @@ and `src.report` on the saved checkpoint. Only proves the code path works on rea
 - Loss and gradient norms finite on both steps (gradients clipped at 1.0; raw norms 52 and 20 at step 1–2 with LR still in warmup).
 - Checkpoints written (`ckpt/`, `best/`, `final/`), reloaded via `load_trained` into a fresh real model, predictions saved, temperature fitted, report built.
 - CPU speed ~12–14 tok/s training, ~8 s/row eval; not a GPU number. Items 7 (T4 timing/memory), 8 (fp16 stability), 9 (baseline) remain PENDING.
+
+## Item 5 on a Kaggle GPU (fp16): VERIFIED, 2026-11-20 (user-run; `python -m src.probe_forward --device cuda:0 --dtype fp16`)
+32 test rows, padded length 718: fp16 logits finite (range 11.25 to 25.94); PrefixLM mask honoured (max |prefix − causal| 9.1);
+forward 17.6 s including CUDA warm-up (not a training speed). Padding invariance printed exactly 0.0, which is uninformative because the
+checked row (index 3) may have been the longest, i.e. unpadded; the probe now checks the shortest row. Zero-shot 0.531 vs ~0.404 chance
+on 32 rows with an untrained readout: noise. GPU model not recorded. Setup issues found: Kaggle's torchao 0.10 breaks peft
+(`pip uninstall -y torchao`); `src/data` was missing from the repo (gitignore bug, fixed in `64c2367`).

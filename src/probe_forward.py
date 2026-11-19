@@ -43,11 +43,13 @@ def main() -> None:
         print(f"{len(rows)} rows, padded seq {b.input_ids.shape[1]}: {time.time() - t:.1f}s")
         valid = lg > -1e8
         print("finite:", bool(torch.isfinite(lg[valid]).all()), "| logit range", lg[valid].min().item(), lg[valid].max().item())
-        s = collate([rows[3]], tok).to(args.device)
+        lens = b.attention_mask.sum(-1)
+        i = int(lens.argmin())  # the shortest row is guaranteed to be padded inside the batch
+        s = collate([rows[i]], tok).to(args.device)
         one = model(s.input_ids, s.attention_mask, s.token_type_ids, s.n_options).float()
-        n = rows[3].n_options
-        print("padding invariance max|diff|:", (lg[3, :n] - one[0, :n]).abs().max().item(),
-              "(fp16 noise ~1e-2 is expected; fp32 should be ~1e-4)")
+        n = rows[i].n_options
+        print(f"padding invariance (row {i}: {int(lens[i])} tokens, batch padded to {b.input_ids.shape[1]}) max|diff|:",
+              (lg[i, :n] - one[0, :n]).abs().max().item(), "(fp16 noise ~1e-2 is expected; fp32 should be ~1e-4)")
         causal = model(b.input_ids, b.attention_mask, torch.zeros_like(b.token_type_ids), b.n_options).float()
         print("max|prefix - causal| logits:", (lg - causal)[valid].abs().max().item(), "(must be > 0)")
         acc = (lg.argmax(-1) == b.target.argmax(-1)).float().mean().item()
