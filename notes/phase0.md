@@ -31,16 +31,21 @@ With our prompt format (letters + instruction line): mean ~330 tokens, p99 ~740,
   `trex_runner` 71% at index 1. Open-Jev-2B scores each candidate independently so it cannot use position. We
   therefore shuffle `choice` option order in training (never `score`: ordinal; never `noul`). Eval uses canonical order.
 
-## 5. Real-model forward pass with PrefixLM format: PENDING (GPU; `python -m src.probe_forward`, see `notes/kaggle.md`)
-Not done locally: the 2.4 GB `model.safetensors` download from the Hub ran at ~200 KB/s and stalled, and a 1B-parameter
-CPU forward at 8 stack passes/token is impractical anyway. The same checks (finite logits, padding invariance, prefix mask
-honoured) already pass on tiny random-weight models (`tests/test_decision_model.py`); the probe repeats them on real weights.
-Tokenizer facts needed for the format are VERIFIED: `<|im_start|>`=6, `<|im_end|>`=7, `<|object_ref_start|>`=8, letters A–P are
-single tokens (ids 63–78), and `tokenizer(text, add_special_tokens=False)` is correct (no BOS is added by default).
+## 5. Real-model forward pass with PrefixLM format: VERIFIED (CPU, fp32, 8 test rows; `python -m src.probe_forward`)
+Weights `model.safetensors` (2,365,606,568 bytes, revision `22097cbc…`) load as `HrmTextForCausalLM`: 1.183B parameters
+including embedding and `lm_head` (the two stacks are ~0.98B). Results:
+- Logits finite (letter logits range 10.5 to 20.6).
+- Padding invariance: max |diff| 3.8e-6 between a row batched with padding and the same row alone.
+- PrefixLM mask is honoured: max |prefix − causal| logit difference 3.9 (so `token_type_ids` matters, as the card says).
+- CPU speed: 143 s for 8 rows at padded length 632 (fp32). Not informative for GPU timing (item 7).
+- Zero-shot accuracy on these 8 rows (0.50 vs ~0.40 chance) is **not evidence of anything** (n=8); the readout is untrained.
+Tokenizer facts VERIFIED: `<|im_start|>`=6, `<|im_end|>`=7, `<|object_ref_start|>`=8, letters A–P are single tokens (ids 63–78),
+and `tokenizer(text, add_special_tokens=False)` is correct (no BOS is added by default).
+Hub download note: the 2.4 GB file ran at ~0.2–1 MB/s; the xet client stalled, plain HTTP (`HF_HUB_DISABLE_XET=1`) finished.
 
 ## 6. LoRA feasibility: VERIFIED (tiny random-weight model, `tests/test_lora_feasibility.py`)
 Read from `transformers/models/hrm_text/modeling_hrm_text.py` (5.23.0):
-- Two separate stacks `L_module`, `H_module`, 16 layers each (~983M params total); the loop applies L three times then H, twice
+- Two separate stacks `L_module`, `H_module`, 16 layers each (~0.98B params in the stacks, 1.183B with embedding and `lm_head`); the loop applies L three times then H, twice
   (8 stack passes/token, 128 layer applications/token).
 - `L_bp_cycles=[0, 3]`: in H-cycle 0 **all three L passes run under `torch.no_grad()`**; in H-cycle 1 all three have
   gradients; the H stack always has gradients. (This corrects the earlier note about "explorer L-cycles (0, 1)".) The

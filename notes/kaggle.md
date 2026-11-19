@@ -9,7 +9,7 @@ pip install -q "transformers>=5.9.0" peft pyyaml pyarrow pandas tqdm pytest
 python -m pytest -q                                   # CPU tests (first run downloads tokenizer + data)
 
 # 2. Phase 0 GPU items, in order
-python -m src.probe_forward --device cuda:0 --dtype fp16                      # item 5 (+ fp16 forward finite?)
+python -m src.probe_forward --device cuda:0 --dtype fp16                      # item 5 already verified on CPU fp32; this checks fp16 forward is finite
 python -m src.train --config configs/probe_timing.yaml --set device=cuda:0    # item 7: tok_per_s, mem_gb in runs/probe_timing/metrics.jsonl
 python -m src.train --config configs/probe_fp16.yaml                          # item 8: skipped_steps, loss_scale collapse, non-finite loss
 # memory/speed with full backprop through all loops:
