@@ -30,13 +30,17 @@ Notes
 - Save `runs/` as notebook output; copy `preds/` and `results.md` back locally for CPU analysis.
 - Hyperparameters live in `configs/`; override with `--set key=value` and a distinct `run_id`.
 - Local Hub downloads of the 2.4 GB weights were ~200 KB/s on 2026-11-19; Kaggle should not have this problem.
-- Experiment tracking (optional, W&B project `HRM_JEV_Finetune`): `pip install wandb` (it is commented out in `requirements.txt`); add `WANDB_API_KEY` as a Kaggle Secret and
-  export it in the cell, together with your entity (kept out of this public repo):
-  ```bash
-  export WANDB_API_KEY=...            # from the Kaggle Secret; never paste the key into a notebook cell or commit it
-  export WANDB_ENTITY=<your-wandb-entity>
-  python -m src.train --config configs/seed1.yaml --set wandb_project=HRM_JEV_Finetune
+- Experiment tracking (optional, W&B project `HRM_JEV_Finetune`): `pip install wandb` (commented out in `requirements.txt`). In the
+  notebook's Add-ons > Secrets, add `WANDB_API_KEY` and `WANDB_ENTITY` and tick them for this notebook (leave other secrets unticked).
+  Secrets are not env vars by themselves; run this cell first (never print the values, notebook output is saved):
+  ```python
+  import os
+  from kaggle_secrets import UserSecretsClient
+  s = UserSecretsClient()
+  os.environ["WANDB_API_KEY"] = s.get_secret("WANDB_API_KEY")   # the label exactly as named in the Secrets panel
+  os.environ["WANDB_ENTITY"] = s.get_secret("WANDB_ENTITY")     # entity is kept out of this public repo
   ```
+  Later `!python -m src.train ... --set wandb_project=HRM_JEV_Finetune` cells inherit these variables.
   Mirrors `metrics.jsonl` only (config + numeric train/val metrics; no rows, prompts or predictions). Resumed sessions continue the
   same W&B run. Without a key the run fails at startup, so only add `wandb_project` when the key is set. No network? `WANDB_MODE=offline`,
   then `wandb sync runs/<id>/wandb`.
