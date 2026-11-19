@@ -77,3 +77,12 @@ forward 17.6 s including CUDA warm-up (not a training speed). Padding invariance
 checked row (index 3) may have been the longest, i.e. unpadded; the probe now checks the shortest row. Zero-shot 0.531 vs ~0.404 chance
 on 32 rows with an untrained readout: noise. Accelerator: Kaggle T4 ×2 (probe uses cuda:0). Re-run with the fixed probe: padding invariance on row 25 (127 tokens, batch padded to 718) max |diff| = 0.015625, i.e. one fp16 rounding step at logit magnitude 16–32 → VERIFIED padding-invariant in fp16. Setup issues found: Kaggle's torchao 0.10 breaks peft
 (`pip uninstall -y torchao`); `src/data` was missing from the repo (gitignore bug, fixed in `64c2367`).
+
+## Real-weights fp16 LoRA training on the local RTX A2000 8 GB: VERIFIED works, 2026-11-20 (NOT a T4; item 7/8 stay PENDING)
+`.venv-cuda` (torch 2.15.0+cu132), `probe_timing.yaml` with batch 4 × accumulation 2, 5 optimizer steps, fp16 + GradScaler, grad checkpointing on, `L_bp_cycles=[0,3]`.
+- Throughput 290–390 tok/s; peak allocated memory **2.5–3.0 GB** at batch 4 (≈ 8 GB card barely used → much larger batches fit).
+- fp16 loss scaler: steps 1–3 were **skipped for gradient overflow** (grad norm NaN/Inf, scale 65536 → 8192), steps 4–5 finite (norm 11.6, 7.9) with the scale
+  stable at 8192. Losses were finite throughout. This is normal GradScaler back-off from its default 65536 start, but 3 of 5 steps wasted; whether skipping
+  continues over a longer run is exactly what `probe_fp16` (200 steps, T4) must show.
+- Eval path, checkpoints and report work in fp16 on GPU. Validation numbers (n=32 after 5 steps) mean nothing.
+- Back-of-envelope only (UNVERIFIED for T4): 16k rows × ~330 tokens ≈ 5.3 M tokens ≈ 4 h at 350 tok/s on this GPU.
