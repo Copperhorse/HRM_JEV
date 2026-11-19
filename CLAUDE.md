@@ -169,6 +169,9 @@ max option count; measured per-decision latency on a stated GPU.
   checkpoints and predictions as Kaggle output; every run resumable across sessions.
 - Local: CachyOS, HP ZBook, RTX A2000 8 GB, 16 GB RAM. Python env: `uv`. Shell: fish.
 
+**Planned commands. None of these exist yet** (no `src/`, `configs/` or `pyproject.toml`).
+Create them in Phase 0, then remove this note.
+
 ```bash
 uv sync                                   # install
 uv run python -m src.data.inspect         # Phase 0 data checks
@@ -178,7 +181,7 @@ uv run python -m src.eval --baseline open-jev-2b --split test,ood
 uv run pytest -q
 ```
 
-## Repo layout (proposed)
+## Repo layout (proposed, none of it exists yet)
 
 ```
 configs/      one YAML per (seed, lr) run
