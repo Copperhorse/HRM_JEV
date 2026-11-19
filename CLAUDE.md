@@ -144,25 +144,22 @@ Not Terminal-Bench (agentic shell tasks — wrong task type).
 formatting, LoRA adapter, readout head, temperature; documents context limit (4,096) and
 max option count; measured per-decision latency on a stated GPU.
 
-## Where things run (decided)
+## Where things run & environment (decided)
 
-- **All training and full evaluation on Kaggle** (2×T4, fp16). Local machine is not used
-  for GPU-heavy work (overheating concern).
-- **Local:** code, CPU-only analysis of saved predictions (`runs/<id>/preds.parquet`), plots.
+- **All training and full evaluation on Kaggle** (2×T4, fp16; **no bf16 on T4/P100**). Local
+  machine is not used for GPU-heavy work (overheating concern).
+- Kaggle quota: ~30 GPU-h/week (2×T4 or 1×P100) + ~20 TPU-h/week, 12 h GPU sessions, counted
+  as wall-clock time. HRM-Text on TPU is untested — don't plan on it.
+- Run training as a headless commit ("Save & Run All"); checkpoint every N steps; save
+  checkpoints and predictions as Kaggle output; every run resumable across sessions.
 - Full eval costs hours per checkpoint (HRM-Text ≈ 8 module passes per token). Run it in the
   same Kaggle session right after training; save per-row probabilities.
 - During development, evaluate on a **fixed stratified sample** (e.g. 2k test + 2k OOD,
   ids saved once to `data/dev_eval_ids.json`).
 - Rough estimate (UNVERIFIED, replace with Phase 0 timing): ~12–16 h per full English epoch
   on one T4, ~7–8 h on 2×T4; 16k–80k-row runs ~3–14 h.
-
-## Hardware & environment
-
-- Kaggle: ~30 GPU-h/week (2×T4 or 1×P100) + ~20 TPU-h/week, 12 h GPU sessions, quota counts
-  wall-clock time. **No bf16 on T4/P100.** HRM-Text on TPU is untested — don't plan on it.
-- Run training as a headless commit ("Save & Run All"); checkpoint every N steps; save
-  checkpoints and predictions as Kaggle output; every run resumable across sessions.
-- Local: CachyOS, HP ZBook, RTX A2000 8 GB, 16 GB RAM. Python env: `uv`. Shell: fish.
+- **Local:** code, CPU-only analysis of saved predictions (`runs/<id>/preds.parquet`), plots.
+  CachyOS, HP ZBook, RTX A2000 8 GB, 16 GB RAM. Python env: `uv`. Shell: fish.
 
 **Planned commands. None of these exist yet** (no `src/`, `configs/` or `pyproject.toml`).
 Create them in Phase 0, then remove this note.
