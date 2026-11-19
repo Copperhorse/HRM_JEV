@@ -46,20 +46,29 @@ def sync_run(run_dir: str | Path, repo: str, *, private: bool = True, token: str
                       allow_patterns=PATTERNS, commit_message=f"Update {run_dir.name}")
 
 
-def restore_run(run_dir: str | Path, repo: str, *, token: str | None = None) -> bool:
-    """Pull `<run_id>/ckpt` (+ best/, metrics.jsonl, run.json) from the Hub into `run_dir`. False if the repo has no checkpoint."""
+TRAIN_ITEMS = ("ckpt", "best", "metrics.jsonl", "run.json")
+_MARKER = {"ckpt": "state.json", "best": "model.json", "final": "model.json"}  # file proving a restored folder is complete
+
+
+def restore_run(run_dir: str | Path, repo: str, *, items=TRAIN_ITEMS, token: str | None = None) -> bool:
+    """Pull `<run_id>/<item>` for each item (default: ckpt, best, metrics.jsonl, run.json) from the Hub into `run_dir`.
+
+    Training resumes with the default items; evaluation needs only e.g. ("best", "run.json"). Returns False if the repo does
+    not hold a complete first folder item. Do not call concurrently for the same run_dir (restore once, then fan out).
+    """
     from huggingface_hub import snapshot_download
 
     run_dir = Path(run_dir)
     name = run_dir.name
+    patterns = [f"{name}/{i}/**" if i in _MARKER else f"{name}/{i}" for i in items]
     with tempfile.TemporaryDirectory() as tmp:
-        snapshot_download(repo, repo_type="model", token=token, local_dir=tmp,
-                          allow_patterns=[f"{name}/ckpt/**", f"{name}/best/**", f"{name}/metrics.jsonl", f"{name}/run.json"])
+        snapshot_download(repo, repo_type="model", token=token, local_dir=tmp, allow_patterns=patterns)
         src = Path(tmp) / name
-        if not (src / "ckpt" / "state.json").exists():
+        first = next(i for i in items if i in _MARKER)
+        if not (src / first / _MARKER[first]).exists():
             return False
         run_dir.mkdir(parents=True, exist_ok=True)
-        for item in ("ckpt", "best", "metrics.jsonl", "run.json"):
+        for item in items:
             if (src / item).exists():
                 dst = run_dir / item
                 shutil.rmtree(dst, ignore_errors=True) if dst.is_dir() else dst.unlink(missing_ok=True)

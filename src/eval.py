@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from .config import TrainConfig
+from .hub import restore_run
 from .data.records import SPLITS, load_split
 from .models.hrm_decision import MODEL_ID, MODEL_REVISION
 from .predict import predict
@@ -37,9 +38,18 @@ def main() -> None:
     ap.add_argument("--shard", help="I/N: evaluate rows I, I+N, ... (one shard per GPU)")
     ap.add_argument("--limit", type=int, help="first N rows of each split (dev sample)")
     ap.add_argument("--data-dir", default="data/raw")
+    ap.add_argument("--hub-repo", help="<hf-user>/<repo>: fetch `--ckpt` + run.json from the Hub if runs/<id>/<ckpt> is missing")
+    ap.add_argument("--restore-only", action="store_true",
+                    help="only fetch from --hub-repo and exit (do this once before launching parallel --shard processes)")
     args = ap.parse_args()
 
     run_dir = Path(args.run)
+    if args.hub_repo and not (run_dir / args.ckpt / "model.json").exists():
+        if not restore_run(run_dir, args.hub_repo, items=(args.ckpt, "run.json")):
+            raise SystemExit(f"no '{args.ckpt}' checkpoint for {run_dir.name} in {args.hub_repo}")
+        print(f"[eval] restored {run_dir.name}/{args.ckpt} from {args.hub_repo}", flush=True)
+    if args.restore_only:
+        return
     cfg = TrainConfig(**json.loads((run_dir / "run.json").read_text())["config"])
     if args.device:
         cfg.device = args.device

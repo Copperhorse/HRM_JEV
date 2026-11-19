@@ -77,3 +77,21 @@ draft session first (double quota), and confirm Settings > Accelerator = GPU T4 
 4. `%%bash` for each seed: `src.eval --ckpt best --split calibration,test,ood` sharded `0/2` on cuda:0 and `1/2` on cuda:1, `wait`, `src.report`, `src.hub` (~1.5 h per seed)
 Total ≈ 6 h of the 12 h session limit. A crash in step 4 does not lose the adapters (Hub + notebook output); rerun eval from an interactive session.
 Logs (`seed*.log`, `eval_*.log`, `report_*.log`) land in the saved version's Output together with `runs/`.
+
+## Evaluate a trained adapter in a fresh session (restore from the Hub)
+Use after a training-only commit run, or whenever `runs/<id>/best` is not on disk. Same setup cells as above (GPU check, clone, install, `pip uninstall -y torchao`,
+secrets cell), then. Restore **once** per run, then fan out the shards (parallel restores into one folder would race):
+```bash
+%%bash
+cd /kaggle/working/HRM_JEV
+for run in seed1 seed2; do
+  python -m src.eval --run runs/$run --ckpt best --hub-repo <hf-user>/hrm-jev-adapters --restore-only
+  python -m src.eval --run runs/$run --ckpt best --split calibration,test,ood --shard 0/2 --device cuda:0 > eval_${run}_0.log 2>&1 &
+  python -m src.eval --run runs/$run --ckpt best --split calibration,test,ood --shard 1/2 --device cuda:1 > eval_${run}_1.log 2>&1 &
+  wait
+  python -m src.report --run runs/$run --ckpt best > report_$run.log 2>&1
+  python -m src.hub --run runs/$run --repo <hf-user>/hrm-jev-adapters >> report_$run.log 2>&1   # uploads results.* next to the adapter
+done
+```
+`--restore-only` fetches only `best/` (or `final/` with `--ckpt final`) and `run.json`, not the optimizer checkpoint. A quick dev check: add `--limit 200`.
+Warm the dataset/model cache first (the two `!python -c ...` pre-download cells above) so parallel shards do not race on downloads.

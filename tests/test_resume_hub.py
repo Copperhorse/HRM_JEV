@@ -35,8 +35,7 @@ def fake_snapshot_download(repo, repo_type, token, local_dir, allow_patterns):
             dst = Path(local_dir) / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(f, dst)
-    if not any(Path(local_dir).iterdir()):
-        raise FileNotFoundError("repo has no matching files")
+    # like the real snapshot_download: no matching files is not an error, just an empty folder
 
 
 @pytest.fixture
@@ -78,3 +77,35 @@ def test_resume_refuses_changed_training_settings_but_allows_eval_changes(tok, t
     out = train(cfg_for(tmp_path, "g", max_steps=4, eval_every=1, log_every=2, dtype="fp32"), model_factory=tiny_factory,
                 tokenizer=tok)  # eval/logging settings may change
     assert out["steps"] == 4
+
+
+def test_restore_run_items_only_fetches_what_eval_needs(tok, tmp_path, fake_hub):  # noqa: F811
+    from src.hub import restore_run
+    cfg = cfg_for(tmp_path, "e", max_steps=2, hub_repo="u/adapters")
+    train(cfg, model_factory=tiny_factory, tokenizer=tok)
+    shutil.rmtree(cfg.run_dir)
+    assert restore_run(cfg.run_dir, "u/adapters", items=("final", "run.json"))
+    assert (cfg.run_dir / "final" / "model.json").exists() and (cfg.run_dir / "run.json").exists()
+    assert not (cfg.run_dir / "ckpt").exists() and not (cfg.run_dir / "best").exists()
+    assert not restore_run(tmp_path / "other", "u/adapters", items=("best", "run.json"))  # nothing under that run id
+
+
+@pytest.mark.parametrize("which", ["best", "final"])
+def test_eval_cli_restores_adapter_from_hub_in_a_fresh_session(tok, tmp_path, fake_hub, monkeypatch, which):  # noqa: F811
+    import sys
+    import pandas as pd
+    import src.eval as ev
+    cfg = cfg_for(tmp_path, "ev", max_steps=2, hub_repo="u/adapters")
+    train(cfg, model_factory=tiny_factory, tokenizer=tok)
+    shutil.rmtree(cfg.run_dir)  # fresh Kaggle session: nothing local
+    monkeypatch.setattr(ev, "default_model_factory", tiny_factory)
+    base = ["eval", "--run", str(cfg.run_dir), "--ckpt", which, "--hub-repo", "u/adapters", "--split", "calibration",
+            "--limit", "4"]
+    monkeypatch.setattr(sys, "argv", base + ["--restore-only"])
+    ev.main()  # restore once ...
+    assert (cfg.run_dir / which / "model.json").exists() and not list(cfg.run_dir.glob("preds/**/*.parquet"))
+    monkeypatch.setattr(sys, "argv", ["eval", "--run", str(cfg.run_dir), "--ckpt", which, "--split", "calibration",
+                                      "--limit", "4", "--shard", "0/2"])
+    ev.main()  # ... then shards run without the hub
+    out = pd.read_parquet(ev.preds_path(cfg.run_dir, which, "calibration", (0, 2)))
+    assert len(out) == 4 and out.logits.map(len).eq(out.n_options).all()

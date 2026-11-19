@@ -172,6 +172,7 @@ uv run python -m src.data.inspect --samples 1             # Phase 0 data checks 
 python -m src.probe_forward --device cpu --dtype fp32 --rows 8  # Phase 0 item 5 (done; ~2.5 min on CPU; use cuda + fp16 to also check fp16)
 uv run python -m src.train --config configs/seed1.yaml [--set max_steps=50 --set run_id=x]   # resumable: rerun to continue
 uv run python -m src.eval --run runs/seed1 --ckpt best --split calibration,test,ood [--shard 0/2 --device cuda:1] [--limit 2000]
+uv run python -m src.eval --run runs/seed1 --ckpt best --hub-repo <user>/<repo> --restore-only   # fetch adapter from the Hub in a fresh session, then run the shards
 uv run python -m src.report --run runs/seed1 --ckpt best  # CPU: temperature fit + tables -> preds/<ckpt>/results.{json,md}
 ```
 
