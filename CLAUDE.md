@@ -156,8 +156,9 @@ max option count; measured per-decision latency on a stated GPU.
   same Kaggle session right after training; save per-row probabilities.
 - During development, evaluate on a **fixed stratified sample** (e.g. 2k test + 2k OOD,
   ids saved once to `data/dev_eval_ids.json`; `src.eval --limit N` is the quick option).
-- Rough estimate (UNVERIFIED, replace with Phase 0 timing): ~12–16 h per full English epoch
-  on one T4, ~7–8 h on 2×T4; 16k–80k-row runs ~3–14 h.
+- Measured on one T4 (50-step probe, fp16, batch 4×4): ~465 tok/s, 3.4 GB peak. Extrapolated (UNVERIFIED): ~3 h for a 16k-row run,
+  ~15 h for a full English epoch; eval ~0.36 s/row (~3 h for calibration+test+OOD on one T4, ~1.5 h sharded over 2). Two T4s run two seeds
+  in parallel; they do not speed up a single run. Details: `notes/phase0.md`.
 - **Local:** code, CPU-only analysis of saved predictions (`runs/<id>/preds/<ckpt>/<split>.parquet`), plots.
   CachyOS, HP ZBook, RTX A2000 8 GB, 16 GB RAM. Python env: `uv`. Shell: fish.
 

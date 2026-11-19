@@ -56,8 +56,8 @@ Read from `transformers/models/hrm_text/modeling_hrm_text.py` (5.23.0):
 - Consequence: with the default, LoRA gradients ignore how the adapters change the H-cycle-0 L passes. That matches
   pretraining. Decision in `decisions.md`: default `[0,3]`, ablate `[3,3]` if memory allows.
 
-## 7. Timing / memory on Kaggle T4: PENDING (run `configs/probe_timing.yaml`, needs GPU)
-## 8. fp16 stability: PENDING (run `configs/probe_fp16.yaml`, needs GPU)
+## 7. Timing / memory on Kaggle T4: VERIFIED for the default config (50-step probe, below); batch-size and `[3,3]` variants still to probe
+## 8. fp16 stability: PARTIAL (first 50 steps clean after initial scaler back-off, see §7 result); the 200-step `probe_fp16` is still PENDING
 ## 9. Reproduce Open-Jev-2B card numbers on 1k rows: PENDING (needs GPU + Qwen3.5-2B + Open-Jev loader)
 The Open-Jev repo's code is untrusted third-party code; review before running. It scores each candidate in its own
 forward pass with a scalar Yes/No head, so our baseline comparison is on identical rows and metrics but not an identical prompt.
@@ -86,3 +86,12 @@ on 32 rows with an untrained readout: noise. Accelerator: Kaggle T4 ×2 (probe u
   continues over a longer run is exactly what `probe_fp16` (200 steps, T4) must show.
 - Eval path, checkpoints and report work in fp16 on GPU. Validation numbers (n=32 after 5 steps) mean nothing.
 - Back-of-envelope only (UNVERIFIED for T4): 16k rows × ~330 tokens ≈ 5.3 M tokens ≈ 4 h at 350 tok/s on this GPU.
+
+## Kaggle T4 timing probe (`configs/probe_timing.yaml`, 1×T4, fp16, batch 4 × accumulation 4, 50 steps): VERIFIED, 2026-11-20
+- Throughput **456–476 tok/s** (steady); peak allocated memory **3.4 GB** (T4 has ~15 GB → large headroom; try bigger batches).
+- fp16 loss scaler: 3 skipped steps, all within the first 10 (scale 65536 → 8192); **no skips over steps 10–50**; loss and gradient norms finite.
+- Loss ~1.15 → ~0.64 (noisy, per-5-step means); validation after 50 steps on 64 rows: hard acc 0.683, NLL 0.711, ECE 0.082. n=64 → no inference.
+- W&B mirror worked (run logged to project `HRM_JEV_Finetune`); a first attempt failed only because the secrets cell had the three secrets cross-wired.
+- Extrapolations (UNVERIFIED; from this probe): 16k rows × ~330 tokens ≈ 5.3 M tokens ≈ **3.1 h**; full English epoch (78.5k rows ≈ 25.7 M tokens) ≈ **15 h** on one T4.
+  Eval ≈ 0.36 s/row at batch 8 on one T4 (64-row sample) → calibration+test+OOD (30.7k rows) ≈ 3 h on one T4, ≈ 1.5 h sharded over both.
+  Two T4s do not speed up one run (no DDP); they run two seeds in parallel, or shard eval.
