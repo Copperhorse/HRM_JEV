@@ -61,7 +61,7 @@ HRM-Text LoRA fine-tune exists (as of 2026-11-19).
 
 ## Phase 0 — verify before writing training code
 
-Record answers in `notes/phase0.md`. **Status:** items 1–6 done (VERIFIED); 7, 8, 9 are PENDING and need a GPU
+Record answers in `notes/phase0.md`. **Status:** items 1–7 done (VERIFIED, incl. T4 timing/memory); 8 partial (200-step fp16 probe pending); 9 pending
 (Kaggle; runbook in `notes/kaggle.md`).
 
 1. Load 50 rows per split and per `kind`; print full records; confirm schema and split sizes.
