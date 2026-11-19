@@ -67,3 +67,13 @@ setup cells (clone, `pip install -r requirements.txt`, `pip uninstall -y torchao
 It resumes from the local `runs/<id>/ckpt` if the disk survived ("Files only" persistence), otherwise restores it from the Hub; if neither
 exists it starts fresh. Resuming refuses (with the changed keys listed) if training settings differ from the checkpoint's (seed, lr, batch,
 rows, lora_*, epochs, max_steps, ...). Eval/logging/hub/dtype/device settings may change. Use `--no-resume` or a new `run_id` for a new recipe.
+
+## Unattended "Save & Run All" notebook (seed1 + seed2, then eval)
+Save & Run All re-runs the whole notebook from a fresh, empty `/kaggle/working`: keep **only** these cells (delete probe/debug cells), stop any open
+draft session first (double quota), and confirm Settings > Accelerator = GPU T4 x2.
+1. `import torch; assert torch.cuda.device_count() == 2` · `!cd /kaggle/working && git clone <repo url>` · `%cd /kaggle/working/HRM_JEV` · `!pip install -q -r requirements.txt` · `!pip uninstall -y torchao`
+2. secrets cell (WANDB_API_KEY, WANDB_ENTITY, HF_TOKEN → `os.environ`)
+3. `%%bash` train: seed1 on cuda:0 and seed2 on cuda:1 in the background with `--set wandb_project=HRM_JEV_Finetune --set hub_repo=<hf-user>/hrm-jev-adapters`, then `wait` (~3 h)
+4. `%%bash` for each seed: `src.eval --ckpt best --split calibration,test,ood` sharded `0/2` on cuda:0 and `1/2` on cuda:1, `wait`, `src.report`, `src.hub` (~1.5 h per seed)
+Total ≈ 6 h of the 12 h session limit. A crash in step 4 does not lose the adapters (Hub + notebook output); rerun eval from an interactive session.
+Logs (`seed*.log`, `eval_*.log`, `report_*.log`) land in the saved version's Output together with `runs/`.
