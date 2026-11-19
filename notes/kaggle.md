@@ -46,9 +46,9 @@ Notes
   same W&B run. Without a key the run fails at startup, so only add `wandb_project` when the key is set. No network? `WANDB_MODE=offline`,
   then `wandb sync runs/<id>/wandb`.
 - Saving the adapter to the Hugging Face Hub (optional, private repo): create a **write** token at hf.co/settings/tokens, store it as a Kaggle
-  Secret (e.g. `Hugging_face`, ticked for the notebook) and export it in the same secrets cell:
+  Secret named `HF_TOKEN` (ticked for the notebook) and export it in the same secrets cell:
   ```python
-  os.environ["HF_TOKEN"] = s.get_secret("Hugging_face")   # must have write access; a read-only token gives a 403 warning, training continues
+  os.environ["HF_TOKEN"] = s.get_secret("HF_TOKEN")   # must have write access; a read-only token gives a 403 warning, training continues
   ```
   then add `--set hub_repo=<hf-user>/hrm-jev-adapters` to `src.train`. After every checkpoint (`save_every`) and at the end it uploads
   `best/`, `final/`, `run.json`, `metrics.jsonl` and `MODEL_NOTES.md` to `<run_id>/` in that repo (private; unchanged files are skipped).
