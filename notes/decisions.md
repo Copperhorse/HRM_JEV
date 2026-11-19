@@ -23,3 +23,8 @@
   Not yet mirrored: eval/report tables (CPU-side; add if wanted).
 - **Adapter persistence:** optional upload of adapter + readout + metrics to a *private* Hugging Face model repo (`hub_repo`), after every checkpoint and at the end,
   so an expiring Kaggle session cannot lose a run. Failure only warns. No optimizer state, predictions or base weights are uploaded.
+- **Resumability across lost sessions:** the Hub upload now includes `ckpt/` (optimizer state, step), and `train` restores it when the local run dir is missing
+  (tested: wipe + resume reproduces the uninterrupted weights). Resume refuses if training settings changed (`RESUME_KEYS` in `src/train.py`).
+  Cost: ~200 MB uploaded per `save_every`, paused training for the upload; private repo storage grows with each checkpoint version.
+- **Both GPUs:** one run per GPU in parallel (seed1 on cuda:0, seed2 on cuda:1) instead of DDP: same wall-clock and quota as one run, gives an early
+  variance estimate, no distributed code. DDP would roughly halve one run's time but only gives one result.

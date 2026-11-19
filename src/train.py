@@ -29,8 +29,15 @@ from .data.records import DATASET_ID, DATASET_REVISION, Record, load_split
 from .metrics import evaluate
 from .models.hrm_decision import MODEL_ID, MODEL_REVISION, HrmDecisionModel, decision_loss, load_hrm
 from .predict import autocast_ctx, predict
-from .hub import sync_run
+from .hub import restore_run, sync_run
 from .tracking import Tracker
+
+
+# Changing any of these between a checkpoint and its resume would silently mix two different recipes
+# (max_steps/epochs change the LR schedule length). dtype/device/eval/logging/hub settings may change freely.
+RESUME_KEYS = ("seed", "english_only", "max_rows", "shuffle_choice_options", "epochs", "max_steps", "batch_size", "accumulation",
+               "lr", "readout_lr", "weight_decay", "warmup_steps", "grad_clip", "brier_weight", "lora_rank", "lora_alpha",
+               "lora_dropout", "l_bp_cycles")
 
 
 def default_model_factory(cfg: TrainConfig, tokenizer) -> HrmDecisionModel:
@@ -136,10 +143,22 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
 
     step, best_nll = 0, float("inf")
     ckpt = run_dir / "ckpt"
+    if resume and cfg.hub_repo and not (ckpt / "state.json").exists() and not (run_dir / "ckpt.old").exists():
+        try:  # local run dir missing (e.g. wiped Kaggle session): pull the latest checkpoint back from the Hub
+            if restore_run(run_dir, cfg.hub_repo):
+                print(f"[train] restored checkpoint for {cfg.run_id} from the Hub repo {cfg.hub_repo}", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"[train] no Hub checkpoint to resume from ({type(e).__name__}); starting fresh", flush=True)
     if resume and not ckpt.exists() and (run_dir / "ckpt.old").exists():
         os.replace(run_dir / "ckpt.old", ckpt)  # crashed between the two renames in save_checkpoint
     if resume and (ckpt / "state.json").exists():
         state = json.loads((ckpt / "state.json").read_text())
+        if (run_dir / "run.json").exists():
+            prev = json.loads((run_dir / "run.json").read_text())["config"]
+            changed = {k: (prev[k], getattr(cfg, k)) for k in RESUME_KEYS if k in prev and prev[k] != getattr(cfg, k)}
+            if changed:
+                raise ValueError(f"refusing to resume {cfg.run_id}: training settings changed since the checkpoint "
+                                 f"{changed}. Revert them, or pass --no-resume / a new run_id.")
         model.load_trained(ckpt)
         opt.load_state_dict(torch.load(ckpt / "optimizer.pt", map_location="cpu", weights_only=True))
         scaler.load_state_dict(torch.load(ckpt / "scaler.pt", map_location="cpu", weights_only=True))

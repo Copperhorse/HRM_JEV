@@ -16,9 +16,14 @@ python -m src.train --config configs/probe_fp16.yaml                          # 
 # memory/speed with full backprop through all loops:
 python -m src.train --config configs/probe_timing.yaml --set l_bp_cycles=[3,3] --set run_id=probe_bp33
 
-# 3. Real run (one seed per GPU; start seed 2 only after seed 1 looks sane)
-python -m src.train --config configs/seed1.yaml --set device=cuda:0 &
-python -m src.train --config configs/seed1.yaml --set device=cuda:1 --set seed=2 --set run_id=seed2 &
+# 3. Real run: one independent run per GPU, in parallel (same wall-clock = same quota as one run). A single run never uses both GPUs (no DDP).
+#    %%bash cell; `wait` makes it block, so it also works in "Save & Run All". Needs the secrets cell (WANDB_*, HF_TOKEN) run earlier in the same session.
+%%bash
+cd /kaggle/working/HRM_JEV
+python -m src.train --config configs/seed1.yaml --set device=cuda:0 --set wandb_project=HRM_JEV_Finetune --set hub_repo=<hf-user>/hrm-jev-adapters > seed1.log 2>&1 &
+python -m src.train --config configs/seed1.yaml --set device=cuda:1 --set seed=2 --set run_id=seed2 --set wandb_project=HRM_JEV_Finetune --set hub_repo=<hf-user>/hrm-jev-adapters > seed2.log 2>&1 &
+wait
+#    Follow progress from another cell: !tail -n 3 /kaggle/working/HRM_JEV/seed1.log   (and the W&B charts)
 
 # 4. Eval right after training, same session; shard across both GPUs
 python -m src.eval --run runs/seed1 --ckpt best --split calibration,test,ood --shard 0/2 --device cuda:0 &
@@ -54,3 +59,11 @@ Notes
   `best/`, `final/`, `run.json`, `metrics.jsonl` and `MODEL_NOTES.md` to `<run_id>/` in that repo (private; unchanged files are skipped).
   Optimizer checkpoints, predictions and base weights are never uploaded. Manual upload: `python -m src.hub --run runs/seed1 --repo <hf-user>/hrm-jev-adapters`.
   Download later: `hf download <hf-user>/hrm-jev-adapters --include "seed1/*" --local-dir adapters` (needs HF_TOKEN for a private repo).
+
+## If the session dies (timeout, crash, quota, wiped disk)
+Checkpoints (adapter + readout + optimizer + scaler + step) are written every `save_every` steps (100 for seed1 ≈ 20 min of work) and, when
+`hub_repo` is set, uploaded to the Hub (`<run_id>/ckpt`). At most one `save_every` interval is lost. To continue: start a new session, re-run the
+setup cells (clone, `pip install -r requirements.txt`, `pip uninstall -y torchao`, secrets cell) and the **identical** training command.
+It resumes from the local `runs/<id>/ckpt` if the disk survived ("Files only" persistence), otherwise restores it from the Hub; if neither
+exists it starts fresh. Resuming refuses (with the changed keys listed) if training settings differ from the checkpoint's (seed, lr, batch,
+rows, lora_*, epochs, max_steps, ...). Eval/logging/hub/dtype/device settings may change. Use `--no-resume` or a new `run_id` for a new recipe.

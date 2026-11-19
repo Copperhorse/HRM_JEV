@@ -37,7 +37,7 @@ def test_disabled_by_default_uploads_nothing(tok, tmp_path):  # noqa: F811
     assert FakeApi.calls == []
 
 
-def test_enabled_uploads_adapter_privately_without_optimizer_state(tok, tmp_path):  # noqa: F811
+def test_enabled_uploads_adapter_and_resumable_checkpoint_privately(tok, tmp_path):  # noqa: F811
     cfg = cfg_for(tmp_path, "h1", max_steps=4, hub_repo="user/adapters", save_every=2)
     train(cfg, model_factory=tiny_factory, tokenizer=tok)
     creates = [c for c in FakeApi.calls if c[0] == "create_repo"]
@@ -46,7 +46,8 @@ def test_enabled_uploads_adapter_privately_without_optimizer_state(tok, tmp_path
     assert all(c[2]["private"] is True and c[1] == "user/adapters" for c in creates)
     u = uploads[-1]
     assert u["path_in_repo"] == "h1" and u["allow_patterns"] == PATTERNS
-    assert not any("ckpt" in p or "parquet" in p or "optimizer" in p for p in PATTERNS)
+    assert "ckpt/**" in PATTERNS  # resumable checkpoint (incl. optimizer state) is uploaded
+    assert not any("parquet" in p or "preds/**" in p for p in PATTERNS)  # raw predictions are not
     notes = (cfg.run_dir / "MODEL_NOTES.md").read_text()
     assert "sapientinc/HRM-Text-1B" in notes and "no performance claim" in notes
 
