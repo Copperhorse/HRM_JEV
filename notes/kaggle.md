@@ -3,9 +3,10 @@
 Kaggle notebook cells (Internet on, GPU T4 ×2). The repo is the source of truth; notebooks stay thin.
 
 ```bash
-# 1. code + deps (Kaggle ships torch; do not reinstall it)
+# 1. code + deps (Kaggle ships torch; do not reinstall it). Clone into /kaggle/working, then `cd HRM_JEV` once (not twice)
 git clone https://github.com/Copperhorse/HRM_JEV.git /kaggle/working/HRM_JEV && cd /kaggle/working/HRM_JEV
 pip install -q -r requirements.txt                    # not torch: Kaggle's CUDA build is already installed
+pip uninstall -y torchao                              # Kaggle's torchao 0.10 breaks peft ("incompatible version of torchao", needs >=0.16); we don't use it
 python -m pytest -q                                   # CPU tests (first run downloads tokenizer + data)
 
 # 2. Phase 0 GPU items, in order

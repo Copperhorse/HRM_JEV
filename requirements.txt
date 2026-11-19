@@ -17,5 +17,7 @@ tqdm
 # tests (python -m pytest -q)
 pytest
 
+# Kaggle only: its preinstalled torchao 0.10 makes peft raise ImportError; run `pip uninstall -y torchao`.
+#
 # optional: experiment tracking, only needed with --set wandb_project=...
 # wandb
