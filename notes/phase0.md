@@ -61,3 +61,12 @@ Read from `transformers/models/hrm_text/modeling_hrm_text.py` (5.23.0):
 ## 9. Reproduce Open-Jev-2B card numbers on 1k rows: PENDING (needs GPU + Qwen3.5-2B + Open-Jev loader)
 The Open-Jev repo's code is untrusted third-party code; review before running. It scores each candidate in its own
 forward pass with a scalar Yes/No head, so our baseline comparison is on identical rows and metrics but not an identical prompt.
+
+## Real-weights end-to-end smoke test: VERIFIED (CPU, fp32, 2026-11-20)
+`src.train --set device=cpu --set dtype=fp32 --set max_steps=2 --set batch_size=1 --set accumulation=1`, then `src.eval --limit 4`
+and `src.report` on the saved checkpoint. Only proves the code path works on real weights; the numbers are meaningless (n≤4, 2 steps).
+- peft found its targets on the real model: **16,515,072 LoRA parameters** (rank 16; matches the hand count
+  32 layers × (5×16×3072 + 3×16×5632) exactly) + 24,592 readout parameters.
+- Loss and gradient norms finite on both steps (gradients clipped at 1.0; raw norms 52 and 20 at step 1–2 with LR still in warmup).
+- Checkpoints written (`ckpt/`, `best/`, `final/`), reloaded via `load_trained` into a fresh real model, predictions saved, temperature fitted, report built.
+- CPU speed ~12–14 tok/s training, ~8 s/row eval; not a GPU number. Items 7 (T4 timing/memory), 8 (fp16 stability), 9 (baseline) remain PENDING.
