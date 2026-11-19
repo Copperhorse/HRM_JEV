@@ -95,3 +95,11 @@ on 32 rows with an untrained readout: noise. Accelerator: Kaggle T4 ×2 (probe u
 - Extrapolations (UNVERIFIED; from this probe): 16k rows × ~330 tokens ≈ 5.3 M tokens ≈ **3.1 h**; full English epoch (78.5k rows ≈ 25.7 M tokens) ≈ **15 h** on one T4.
   Eval ≈ 0.36 s/row at batch 8 on one T4 (64-row sample) → calibration+test+OOD (30.7k rows) ≈ 3 h on one T4, ≈ 1.5 h sharded over both.
   Two T4s do not speed up one run (no DDP); they run two seeds in parallel, or shard eval.
+
+## Kaggle T4 batch-size probe (`probe_timing.yaml`, batch 8 × accumulation 2, 50 steps): VERIFIED, 2026-11-20
+- Throughput 464–506 tok/s (mean ≈ 484) vs ≈ 466 at batch 4 × 4: **+~4%, within noise**; peak memory 4.7 GB vs 3.4 GB. Throughput is compute-bound, so larger
+  batches are not worth it; **keep batch 4 × accumulation 4** (same 16 rows/step).
+- fp16 scaler: 3 skips early plus **1 more around step 41–45** (scale 8192 → 4096), so overflows are not only a start-up effect. Loss and grad norms finite;
+  raw grad norms 1–16 (all above the 1.0 clip; harmless with AdamW). One skipped step wastes one 16-row step.
+- Watch rule for the real run: `skipped_steps` should stay in the low single digits per ~100 steps. If it climbs steadily (e.g. > 30 by step 250), stop and
+  consider a smaller initial loss scale / fp32 for norms (see Phase 0 item 8 fallback in CLAUDE.md). Validation n=64 after 50 steps: NLL 0.712 (vs 0.711), noise.
