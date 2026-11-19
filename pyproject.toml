@@ -1,0 +1,33 @@
+[project]
+name = "hrm-jev"
+version = "0.1.0"
+description = "LoRA fine-tune of HRM-Text-1B into a typed decision model on Open-Jev"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "torch>=2.6",
+    "transformers>=5.9.0",
+    "peft>=0.19",
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "pyyaml",
+    "huggingface_hub",
+    "tqdm",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+# Local machine is CPU-only for this project (GPU work happens on Kaggle).
+# On Kaggle, use the preinstalled torch instead of `uv sync`.
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
