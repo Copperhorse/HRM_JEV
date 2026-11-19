@@ -41,6 +41,9 @@ class TrainConfig:
     eval_rows: int = 1000  # fixed seeded sample of validation
     eval_batch_size: int = 16
     save_every: int = 250
+    # optional Weights & Biases mirror of metrics.jsonl (off when wandb_project is null); see src/tracking.py
+    wandb_project: str | None = None
+    wandb_entity: str | None = None
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "TrainConfig":

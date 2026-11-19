@@ -30,3 +30,6 @@ Notes
 - Save `runs/` as notebook output; copy `preds/` and `results.md` back locally for CPU analysis.
 - Hyperparameters live in `configs/`; override with `--set key=value` and a distinct `run_id`.
 - Local Hub downloads of the 2.4 GB weights were ~200 KB/s on 2026-11-19; Kaggle should not have this problem.
+- Experiment tracking (optional): `pip install wandb`, add `WANDB_API_KEY` as a Kaggle Secret (export it in the cell), then add
+  `--set wandb_project=hrm-jev` to `src.train`. Mirrors `metrics.jsonl` only (config + numeric train/val metrics; no rows, prompts
+  or predictions). Resumed sessions continue the same W&B run. No network? `WANDB_MODE=offline`, then `wandb sync runs/<id>/wandb`.

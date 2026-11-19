@@ -15,3 +15,9 @@
 - **Calibration:** one temperature fitted on the full calibration split, applied to every split and subset.
 - **Two GPUs:** run one seed per T4 (`device: cuda:1`) rather than DDP; shard eval with `--shard i/n`.
 - **Third-party code:** the cloned Open-Jev repo is read, not executed, until reviewed.
+
+## 2026-11-20
+- **Experiment tracking:** optional Weights & Biases mirror (`wandb_project` config key; off by default), chosen over MLflow because it
+  works from a Kaggle notebook with just an API key (MLflow would need a reachable server or a downloaded file store).
+  `runs/<id>/metrics.jsonl`, `run.json` and the saved predictions remain the source of truth; W&B receives config + numeric metrics only.
+  Not yet mirrored: eval/report tables (CPU-side; add if wanted).

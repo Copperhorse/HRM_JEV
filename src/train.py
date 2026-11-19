@@ -29,6 +29,7 @@ from .data.records import DATASET_ID, DATASET_REVISION, Record, load_split
 from .metrics import evaluate
 from .models.hrm_decision import MODEL_ID, MODEL_REVISION, HrmDecisionModel, decision_loss, load_hrm
 from .predict import autocast_ctx, predict
+from .tracking import Tracker
 
 
 def default_model_factory(cfg: TrainConfig, tokenizer) -> HrmDecisionModel:
@@ -143,10 +144,12 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
         "trainable_params": {k: sum(p.numel() for p in v) for k, v in groups.items()},
     }, indent=2))
     log = (run_dir / "metrics.jsonl").open("a")
+    tracker = Tracker(cfg, run_dir)
 
     def log_row(row: dict) -> None:
         log.write(json.dumps(row) + "\n")
         log.flush()
+        tracker.log(row)
         print("[train]", json.dumps(row), flush=True)
 
     def run_eval() -> None:
@@ -205,6 +208,7 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
     model.save(run_dir / "final")
     save_checkpoint(run_dir, model, opt, scaler, {"step": step, "best_nll": best_nll})
     log.close()
+    tracker.finish({"best_val_nll": best_nll, "steps": step})
     return {"steps": step, "best_val_nll": best_nll, "run_dir": str(run_dir)}
 
 
