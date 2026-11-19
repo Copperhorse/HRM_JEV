@@ -48,3 +48,13 @@ def test_enabled_mirrors_metrics_and_reuses_run_id(tok, tmp_path, monkeypatch): 
     first_id = init["id"]
     train(cfg, model_factory=tiny_factory, tokenizer=tok)  # same run dir: resumed session keeps the W&B run id
     assert calls["init"][1]["id"] == first_id
+
+
+def test_bad_key_warns_and_training_continues(tok, tmp_path, monkeypatch, capsys):  # noqa: F811
+    def boom(**kw):
+        raise RuntimeError("WANDB_API_KEY invalid: API key must have 40+ characters, has 37.")
+
+    monkeypatch.setitem(sys.modules, "wandb", types.SimpleNamespace(init=boom, Settings=lambda **kw: kw))
+    out = train(cfg_for(tmp_path, "badkey", max_steps=2, wandb_project="proj"), model_factory=tiny_factory, tokenizer=tok)
+    assert out["steps"] == 2
+    assert "W&B disabled for this run" in capsys.readouterr().out

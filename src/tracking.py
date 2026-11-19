@@ -29,21 +29,33 @@ class Tracker:
         self.run = None
         if not cfg.wandb_project:
             return
-        import wandb
+        try:
+            import wandb
 
-        id_file = Path(run_dir) / "wandb_id.txt"
-        run_id = id_file.read_text().strip() if id_file.exists() else uuid.uuid4().hex[:8]
-        id_file.write_text(run_id)
-        self.run = wandb.init(
-            project=cfg.wandb_project, entity=cfg.wandb_entity, name=cfg.run_id, id=run_id, resume="allow",
-            config=cfg.to_dict(), dir=str(run_dir), settings=wandb.Settings(save_code=False))
+            id_file = Path(run_dir) / "wandb_id.txt"
+            run_id = id_file.read_text().strip() if id_file.exists() else uuid.uuid4().hex[:8]
+            id_file.write_text(run_id)
+            self.run = wandb.init(
+                project=cfg.wandb_project, entity=cfg.wandb_entity, name=cfg.run_id, id=run_id, resume="allow",
+                config=cfg.to_dict(), dir=str(run_dir), settings=wandb.Settings(save_code=False))
+        except Exception as e:  # noqa: BLE001
+            # Tracking is only a mirror of metrics.jsonl: a bad key or an outage must not kill a training run.
+            print(f"[train] WARNING: W&B disabled for this run ({type(e).__name__}: {e}); training continues", flush=True)
+            self.run = None
 
     def log(self, row: dict) -> None:
         if self.run is not None and "step" in row:
-            self.run.log({k: v for k, v in _flatten(row).items() if k != "step"}, step=int(row["step"]))
+            try:
+                self.run.log({k: v for k, v in _flatten(row).items() if k != "step"}, step=int(row["step"]))
+            except Exception as e:  # noqa: BLE001
+                print(f"[train] WARNING: W&B logging failed, disabling it ({type(e).__name__}: {e})", flush=True)
+                self.run = None
 
     def finish(self, summary: dict | None = None) -> None:
         if self.run is not None:
-            for k, v in (summary or {}).items():
-                self.run.summary[k] = v
-            self.run.finish()
+            try:
+                for k, v in (summary or {}).items():
+                    self.run.summary[k] = v
+                self.run.finish()
+            except Exception as e:  # noqa: BLE001
+                print(f"[train] WARNING: W&B finish failed ({type(e).__name__}: {e})", flush=True)
