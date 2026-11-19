@@ -30,6 +30,13 @@ Notes
 - Save `runs/` as notebook output; copy `preds/` and `results.md` back locally for CPU analysis.
 - Hyperparameters live in `configs/`; override with `--set key=value` and a distinct `run_id`.
 - Local Hub downloads of the 2.4 GB weights were ~200 KB/s on 2026-11-19; Kaggle should not have this problem.
-- Experiment tracking (optional): `pip install wandb`, add `WANDB_API_KEY` as a Kaggle Secret (export it in the cell), then add
-  `--set wandb_project=hrm-jev` to `src.train`. Mirrors `metrics.jsonl` only (config + numeric train/val metrics; no rows, prompts
-  or predictions). Resumed sessions continue the same W&B run. No network? `WANDB_MODE=offline`, then `wandb sync runs/<id>/wandb`.
+- Experiment tracking (optional, W&B project `HRM_JEV_Finetune`): `pip install wandb`; add `WANDB_API_KEY` as a Kaggle Secret and
+  export it in the cell, together with your entity (kept out of this public repo):
+  ```bash
+  export WANDB_API_KEY=...            # from the Kaggle Secret; never paste the key into a notebook cell or commit it
+  export WANDB_ENTITY=<your-wandb-entity>
+  python -m src.train --config configs/seed1.yaml --set wandb_project=HRM_JEV_Finetune
+  ```
+  Mirrors `metrics.jsonl` only (config + numeric train/val metrics; no rows, prompts or predictions). Resumed sessions continue the
+  same W&B run. Without a key the run fails at startup, so only add `wandb_project` when the key is set. No network? `WANDB_MODE=offline`,
+  then `wandb sync runs/<id>/wandb`.
