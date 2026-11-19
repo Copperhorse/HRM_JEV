@@ -31,7 +31,12 @@ With our prompt format (letters + instruction line): mean ~330 tokens, p99 ~740,
   `trex_runner` 71% at index 1. Open-Jev-2B scores each candidate independently so it cannot use position. We
   therefore shuffle `choice` option order in training (never `score`: ordinal; never `noul`). Eval uses canonical order.
 
-## 5. HRM-Text-1B loads and runs with PrefixLM format: see below (updated after the CPU run)
+## 5. Real-model forward pass with PrefixLM format: PENDING (GPU; `python -m src.probe_forward`, see `notes/kaggle.md`)
+Not done locally: the 2.4 GB `model.safetensors` download from the Hub ran at ~200 KB/s and stalled, and a 1B-parameter
+CPU forward at 8 stack passes/token is impractical anyway. The same checks (finite logits, padding invariance, prefix mask
+honoured) already pass on tiny random-weight models (`tests/test_decision_model.py`); the probe repeats them on real weights.
+Tokenizer facts needed for the format are VERIFIED: `<|im_start|>`=6, `<|im_end|>`=7, `<|object_ref_start|>`=8, letters A–P are
+single tokens (ids 63–78), and `tokenizer(text, add_special_tokens=False)` is correct (no BOS is added by default).
 
 ## 6. LoRA feasibility: VERIFIED (tiny random-weight model, `tests/test_lora_feasibility.py`)
 Read from `transformers/models/hrm_text/modeling_hrm_text.py` (5.23.0):

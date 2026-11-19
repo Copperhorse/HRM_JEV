@@ -61,8 +61,8 @@ HRM-Text LoRA fine-tune exists (as of 2026-11-19).
 
 ## Phase 0 — verify before writing training code
 
-Record answers in `notes/phase0.md`. **Status:** items 1–4 and 6 done (VERIFIED); 5 see notes;
-7–9 are PENDING and need a GPU (Kaggle).
+Record answers in `notes/phase0.md`. **Status:** items 1–4 and 6 done (VERIFIED); 5, 7, 8, 9 are PENDING and need a GPU
+(Kaggle; runbook in `notes/kaggle.md`).
 
 1. Load 50 rows per split and per `kind`; print full records; confirm schema and split sizes.
 2. Count rows by `kind`, `source`, language, `target_basis`, per split.
@@ -168,6 +168,7 @@ uv sync                                                   # install (CPU torch l
 uv run pytest -q                                          # all tests (CPU, ~20 s; first run downloads the tokenizer + data)
 uv run pytest tests/test_train.py::test_lr_schedule -q    # single test
 uv run python -m src.data.inspect --samples 1             # Phase 0 data checks (markdown to stdout)
+python -m src.probe_forward --device cuda:0 --dtype fp16  # Phase 0 item 5, GPU only
 uv run python -m src.train --config configs/seed1.yaml [--set max_steps=50 --set run_id=x]   # resumable: rerun to continue
 uv run python -m src.eval --run runs/seed1 --ckpt best --split calibration,test,ood [--shard 0/2 --device cuda:1] [--limit 2000]
 uv run python -m src.report --run runs/seed1 --ckpt best  # CPU: temperature fit + tables -> preds/<ckpt>/results.{json,md}
@@ -203,7 +204,7 @@ readout at the last prompt token, masked to each row's option count) -> `decisio
 configs/      one YAML per run (probe_timing, probe_fp16, seed1)
 src/data/     records.py (loader), prompt.py (render/collate), inspect.py (Phase 0)
 src/models/   hrm_decision.py
-src/          config, train, predict, eval, report, metrics
+src/          config, train, predict, eval, report, metrics, probe_forward
 tests/        CPU tests on tiny random-weight HRM models + real tokenizer/data
 notes/        phase0.md, decisions.md, prior_work.md   (results.md to come)
 runs/ data/   outputs and downloaded data (gitignored)
