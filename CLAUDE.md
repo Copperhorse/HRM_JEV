@@ -190,6 +190,7 @@ readout at the last prompt token, masked to each row's option count) -> `decisio
   base weights are re-downloaded at the pinned revision. Hyperparameters live only in `configs/*.yaml`
   (`src/config.py:TrainConfig`); each run writes its resolved config + revisions to `run.json`.
   Optional W&B mirror via `wandb_project` (`src/tracking.py`); `metrics.jsonl` stays the source of truth.
+  Optional adapter upload to a private HF model repo via `hub_repo` (`src/hub.py`; best-effort, never kills a run).
 - Eval is split in two so GPU time is never spent on analysis: `src.eval` (GPU) saves per-row logits in
   canonical option order on the *full* split; `src.report` (CPU) fits one temperature on the full
   calibration split and computes metrics per split x {english, full} x kind. `src/metrics.py` follows the

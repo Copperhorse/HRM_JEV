@@ -29,6 +29,7 @@ from .data.records import DATASET_ID, DATASET_REVISION, Record, load_split
 from .metrics import evaluate
 from .models.hrm_decision import MODEL_ID, MODEL_REVISION, HrmDecisionModel, decision_loss, load_hrm
 from .predict import autocast_ctx, predict
+from .hub import sync_run
 from .tracking import Tracker
 
 
@@ -90,6 +91,16 @@ def save_checkpoint(run_dir: Path, model, opt, scaler, state: dict) -> None:
         os.replace(final, old)
     os.replace(tmp, final)
     shutil.rmtree(old, ignore_errors=True)
+
+
+def push_to_hub(cfg: TrainConfig, run_dir: Path) -> None:
+    """Best-effort: an upload failure must never kill a training run."""
+    if not cfg.hub_repo:
+        return
+    try:
+        sync_run(run_dir, cfg.hub_repo, private=cfg.hub_private)
+    except Exception as e:  # noqa: BLE001
+        print(f"[train] WARNING: hub upload failed ({type(e).__name__}: {e}); training continues", flush=True)
 
 
 def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=None, resume: bool = True,
@@ -201,6 +212,7 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
             run_eval()
         if step % cfg.save_every == 0 and step != total_steps:
             save_checkpoint(run_dir, model, opt, scaler, {"step": step, "best_nll": best_nll})
+            push_to_hub(cfg, run_dir)
         if _crash_after is not None and step == _crash_after:
             raise RuntimeError("simulated crash")
 
@@ -208,6 +220,7 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
     model.save(run_dir / "final")
     save_checkpoint(run_dir, model, opt, scaler, {"step": step, "best_nll": best_nll})
     log.close()
+    push_to_hub(cfg, run_dir)
     tracker.finish({"best_val_nll": best_nll, "steps": step})
     return {"steps": step, "best_val_nll": best_nll, "run_dir": str(run_dir)}
 

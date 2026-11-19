@@ -44,6 +44,9 @@ class TrainConfig:
     # optional Weights & Biases mirror of metrics.jsonl (off when wandb_project is null); see src/tracking.py
     wandb_project: str | None = None
     wandb_entity: str | None = None
+    # optional upload of adapter + metrics to a Hugging Face model repo, e.g. "<user>/hrm-jev-adapters" (see src/hub.py)
+    hub_repo: str | None = None
+    hub_private: bool = True
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "TrainConfig":

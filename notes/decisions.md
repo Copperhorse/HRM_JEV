@@ -21,3 +21,5 @@
   works from a Kaggle notebook with just an API key (MLflow would need a reachable server or a downloaded file store).
   `runs/<id>/metrics.jsonl`, `run.json` and the saved predictions remain the source of truth; W&B receives config + numeric metrics only.
   Not yet mirrored: eval/report tables (CPU-side; add if wanted).
+- **Adapter persistence:** optional upload of adapter + readout + metrics to a *private* Hugging Face model repo (`hub_repo`), after every checkpoint and at the end,
+  so an expiring Kaggle session cannot lose a run. Failure only warns. No optimizer state, predictions or base weights are uploaded.
