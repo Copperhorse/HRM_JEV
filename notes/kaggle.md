@@ -43,7 +43,7 @@ Notes
   ```
   Later `!python -m src.train ... --set wandb_project=HRM_JEV_Finetune` cells inherit these variables.
   Mirrors `metrics.jsonl` only (config + numeric train/val metrics; no rows, prompts or predictions). Resumed sessions continue the
-  same W&B run. Without a key the run fails at startup, so only add `wandb_project` when the key is set. No network? `WANDB_MODE=offline`,
+  same W&B run. Without a key an interactive notebook shows a wandb login prompt (stop the cell, run the secrets cell, rerun; or answer `3` to disable W&B for that run), and a headless "Save & Run All" run cannot answer it. Env vars do not survive a kernel restart: re-run the secrets cell in every new session. No network? `WANDB_MODE=offline`,
   then `wandb sync runs/<id>/wandb`.
 - Saving the adapter to the Hugging Face Hub (optional, private repo): create a **write** token at hf.co/settings/tokens, store it as a Kaggle
   Secret named `HF_TOKEN` (ticked for the notebook) and export it in the same secrets cell:

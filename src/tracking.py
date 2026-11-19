@@ -2,7 +2,7 @@
 
 `runs/<id>/metrics.jsonl` stays the source of truth; this only mirrors it. Only the resolved config and the
 numeric training/validation metrics are sent: no dataset rows, prompts or predictions. Code saving is off.
-Auth: `WANDB_API_KEY` env var (Kaggle: add it as a Secret). For no network during a run use `WANDB_MODE=offline`
+Auth: `WANDB_API_KEY` env var (Kaggle: add it as a Secret and export it in the notebook; without it wandb prompts interactively). For no network during a run use `WANDB_MODE=offline`
 and `wandb sync runs/<id>/wandb` afterwards. The wandb run id is stored in `runs/<id>/wandb_id.txt`, so a resumed
 training session continues the same W&B run.
 """
