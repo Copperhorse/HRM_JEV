@@ -29,3 +29,8 @@ Phase 0 data/LoRA checks done; training, eval and report code written and tested
 
 - Training and full evaluation: Kaggle (2×T4, fp16).
 - Local: code, CPU-only analysis of saved predictions, plots.
+
+## License
+
+Code: MIT (see [LICENSE](LICENSE)). The Open-Jev dataset, HRM-Text-1B weights and Open-Jev-2B checkpoint are third-party and keep
+their own licenses; none of them are redistributed here (they are downloaded from the Hugging Face Hub at pinned revisions).
