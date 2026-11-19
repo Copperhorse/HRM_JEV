@@ -5,7 +5,7 @@ Kaggle notebook cells (Internet on, GPU T4 ×2). The repo is the source of truth
 ```bash
 # 1. code + deps (Kaggle ships torch; do not reinstall it)
 git clone https://github.com/Copperhorse/HRM_JEV.git /kaggle/working/HRM_JEV && cd /kaggle/working/HRM_JEV
-pip install -q "transformers>=5.9.0" peft pyyaml pyarrow pandas tqdm pytest
+pip install -q -r requirements.txt                    # not torch: Kaggle's CUDA build is already installed
 python -m pytest -q                                   # CPU tests (first run downloads tokenizer + data)
 
 # 2. Phase 0 GPU items, in order
@@ -30,7 +30,7 @@ Notes
 - Save `runs/` as notebook output; copy `preds/` and `results.md` back locally for CPU analysis.
 - Hyperparameters live in `configs/`; override with `--set key=value` and a distinct `run_id`.
 - Local Hub downloads of the 2.4 GB weights were ~200 KB/s on 2026-11-19; Kaggle should not have this problem.
-- Experiment tracking (optional, W&B project `HRM_JEV_Finetune`): `pip install wandb`; add `WANDB_API_KEY` as a Kaggle Secret and
+- Experiment tracking (optional, W&B project `HRM_JEV_Finetune`): `pip install wandb` (it is commented out in `requirements.txt`); add `WANDB_API_KEY` as a Kaggle Secret and
   export it in the cell, together with your entity (kept out of this public repo):
   ```bash
   export WANDB_API_KEY=...            # from the Kaggle Secret; never paste the key into a notebook cell or commit it

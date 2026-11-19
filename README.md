@@ -34,3 +34,8 @@ Phase 0 data/LoRA checks done; training, eval and report code written and tested
 
 Code: MIT (see [LICENSE](LICENSE)). The Open-Jev dataset, HRM-Text-1B weights and Open-Jev-2B checkpoint are third-party and keep
 their own licenses; none of them are redistributed here (they are downloaded from the Hugging Face Hub at pinned revisions).
+
+## Setup
+
+- Local (CPU torch, via [uv](https://docs.astral.sh/uv/)): `uv sync`, then `uv run pytest -q`.
+- Plain `pip` (e.g. Kaggle, which already provides a CUDA torch): `pip install -r requirements.txt`.

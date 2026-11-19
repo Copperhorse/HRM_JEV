@@ -1,0 +1,21 @@
+# For plain `pip` environments (e.g. Kaggle). Locally we use uv (pyproject.toml + uv.lock is the source of truth;
+# keep this file in sync with [project].dependencies there).
+#
+# torch is deliberately NOT listed: Kaggle ships a CUDA build, and pip-installing torch from PyPI could replace it.
+# Locally, `uv sync` installs the CPU-only torch.
+#
+# Tested with: transformers 5.23.0, peft 0.22.0, numpy 2.5.5, pandas 3.1.1, pyarrow 26.0.1.
+transformers>=5.9.0   # first release with the native `hrm_text` model class
+peft>=0.19
+numpy
+pandas
+pyarrow
+pyyaml
+huggingface_hub
+tqdm
+
+# tests (python -m pytest -q)
+pytest
+
+# optional: experiment tracking, only needed with --set wandb_project=...
+# wandb
