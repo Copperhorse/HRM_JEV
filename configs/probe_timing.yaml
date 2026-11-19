@@ -1,0 +1,10 @@
+# Phase 0 item 7: peak memory + wall time for 50 LoRA steps at real prompt lengths (run on Kaggle T4).
+run_id: probe_timing
+dtype: fp16
+max_steps: 50
+batch_size: 4
+accumulation: 4
+log_every: 5
+eval_every: 100000
+save_every: 100000
+eval_rows: 64

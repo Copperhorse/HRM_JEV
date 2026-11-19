@@ -1,0 +1,10 @@
+# Phase 0 item 8: fp16 stability, 200 LoRA steps. Check metrics.jsonl for skipped_steps, loss_scale collapse, NaN/inf.
+run_id: probe_fp16
+dtype: fp16
+max_steps: 200
+batch_size: 4
+accumulation: 4
+log_every: 5
+eval_every: 100
+save_every: 100000
+eval_rows: 256

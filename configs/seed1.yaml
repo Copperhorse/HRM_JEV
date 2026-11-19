@@ -1,0 +1,13 @@
+# First real run: 16k English rows (SanSi-sized), 1 pass. Revise rows/steps after the timing + fp16 probes.
+run_id: seed1
+seed: 1
+dtype: fp16
+max_rows: 16000
+batch_size: 4
+accumulation: 4
+lr: 2.0e-4
+readout_lr: 1.0e-4
+warmup_steps: 50
+eval_every: 250
+save_every: 100
+eval_rows: 1000
