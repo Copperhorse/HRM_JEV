@@ -1,0 +1,26 @@
+# Secrets / credentials
+.env
+.env.*
+kaggle.json
+.kaggle/
+.huggingface/
+*.token
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Run outputs and data
+runs/
+data/
+*.parquet
+*.safetensors
+*.pt
+*.ckpt
+
+# Notebooks
+.ipynb_checkpoints/
