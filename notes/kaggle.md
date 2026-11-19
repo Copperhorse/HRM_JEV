@@ -4,7 +4,7 @@ Kaggle notebook cells (Internet on, GPU T4 ×2). The repo is the source of truth
 
 ```bash
 # 1. code + deps (Kaggle ships torch; do not reinstall it)
-git clone <this repo> /kaggle/working/HRM_JEV && cd /kaggle/working/HRM_JEV
+git clone https://github.com/Copperhorse/HRM_JEV.git /kaggle/working/HRM_JEV && cd /kaggle/working/HRM_JEV
 pip install -q "transformers>=5.9.0" peft pyyaml pyarrow pandas tqdm pytest
 python -m pytest -q                                   # CPU tests (first run downloads tokenizer + data)
 
