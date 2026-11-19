@@ -16,7 +16,7 @@ vs model Y on identical rows / the same leaderboard harness."
 
 ## Status
 
-Planning stage. No code yet. The plan lives in [`CLAUDE.md`](CLAUDE.md).
+Phase 0 data/LoRA checks done; training, eval and report code written and tested on CPU (GPU probes pending on Kaggle). The plan lives in [`CLAUDE.md`](CLAUDE.md).
 
 ## Plan
 
