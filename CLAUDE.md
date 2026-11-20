@@ -158,7 +158,7 @@ max option count; measured per-decision latency on a stated GPU.
   ids saved once to `data/dev_eval_ids.json`; `src.eval --limit N` is the quick option).
 - Measured on one T4 (50-step probe, fp16, batch 4×4): ~465 tok/s, 3.4 GB peak. Extrapolated (UNVERIFIED): ~3 h for a 16k-row run,
   ~15 h for a full English epoch; eval measured at ~0.32 s/row (~2.7 h for calibration+test+OOD on one T4, ~1.4 h sharded over 2, per seed). Two T4s run two seeds
-  in parallel; they do not speed up a single run. Details: `notes/phase0.md`.
+  in parallel, or one run data-parallel via `torchrun --nproc_per_node=2` (~1.9x, NCCL on Kaggle UNVERIFIED). Details: `notes/phase0.md`.
 - **Local:** code, CPU-only analysis of saved predictions (`runs/<id>/preds/<ckpt>/<split>.parquet`), plots.
   CachyOS, HP ZBook, RTX A2000 8 GB, 16 GB RAM. Python env: `uv`. Shell: fish.
 
@@ -171,6 +171,7 @@ uv run pytest tests/test_train.py::test_lr_schedule -q    # single test
 uv run python -m src.data.inspect --samples 1             # Phase 0 data checks (markdown to stdout)
 python -m src.probe_forward --device cpu --dtype fp32 --rows 8  # Phase 0 item 5 (done; ~2.5 min on CPU; use cuda + fp16 to also check fp16)
 uv run python -m src.train --config configs/seed1.yaml [--set max_steps=50 --set run_id=x]   # resumable: rerun to continue
+torchrun --nproc_per_node=2 -m src.train --config configs/seed1_long.yaml   # same recipe data-parallel on 2 GPUs (accumulation % 2 == 0)
 uv run python -m src.eval --run runs/seed1 --ckpt best --split calibration,test,ood [--shard 0/2 --device cuda:1] [--limit 2000]
 uv run python -m src.eval --run runs/seed1 --ckpt best --hub-repo <user>/<repo> --restore-only   # fetch adapter from the Hub in a fresh session, then run the shards
 uv run python -m src.report --run runs/seed1 --ckpt best  # CPU: temperature fit + tables -> preds/<ckpt>/results.{json,md}
@@ -206,7 +207,7 @@ readout at the last prompt token, masked to each row's option count) -> `decisio
 ## Repo layout
 
 ```
-configs/      one YAML per run (probe_timing, probe_fp16, seed1)
+configs/      one YAML per run (probe_timing, probe_fp16, seed1, seed1_long)
 src/data/     records.py (loader), prompt.py (render/collate), inspect.py (Phase 0)
 src/models/   hrm_decision.py
 src/          config, train, predict, eval, report, metrics, probe_forward

@@ -1,0 +1,15 @@
+# Longer run, same recipe as seed1 but 3x the data: 48k English rows, 1 pass = 3,000 optimizer steps.
+# Run data-parallel on both T4s:  torchrun --nproc_per_node=2 -m src.train --config configs/seed1_long.yaml
+# (16 rows/step = 2 GPUs x 2 micro-batches x 4 rows; identical maths to one GPU, ~1.9x faster). Smaller: --set max_rows=32000.
+run_id: seed1_long
+seed: 1
+dtype: fp16
+max_rows: 48000
+batch_size: 4
+accumulation: 4
+lr: 2.0e-4
+readout_lr: 1.0e-4
+warmup_steps: 50
+eval_every: 500
+save_every: 200
+eval_rows: 1000

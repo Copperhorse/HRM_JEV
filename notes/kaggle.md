@@ -16,7 +16,7 @@ python -m src.train --config configs/probe_fp16.yaml                          # 
 # memory/speed with full backprop through all loops:
 python -m src.train --config configs/probe_timing.yaml --set l_bp_cycles=[3,3] --set run_id=probe_bp33
 
-# 3. Real run: one independent run per GPU, in parallel (same wall-clock = same quota as one run). A single run never uses both GPUs (no DDP).
+# 3. Real run: one independent run per GPU, in parallel (same wall-clock = same quota as one run). For ONE run on both GPUs see "One run on both GPUs" below.
 #    %%bash cell; `wait` makes it block, so it also works in "Save & Run All". Needs the secrets cell (WANDB_*, HF_TOKEN) run earlier in the same session.
 %%bash
 cd /kaggle/working/HRM_JEV
@@ -59,6 +59,23 @@ Notes
   `best/`, `final/`, `run.json`, `metrics.jsonl` and `MODEL_NOTES.md` to `<run_id>/` in that repo (private; unchanged files are skipped).
   Optimizer checkpoints, predictions and base weights are never uploaded. Manual upload: `python -m src.hub --run runs/seed1 --repo <hf-user>/hrm-jev-adapters`.
   Download later: `hf download <hf-user>/hrm-jev-adapters --include "seed1/*" --local-dir adapters` (needs HF_TOKEN for a private repo).
+
+## One run on both GPUs (data-parallel; `configs/seed1_long.yaml` = 48k rows, 3,000 steps)
+`torchrun --nproc_per_node=2 -m src.train ...` starts one process per T4. Each rank takes half of every step's micro-batches (batch 4 x accumulation 4 -> 2 per rank),
+gradients are summed before the optimizer step, so the recipe is the same as on one GPU (VERIFIED on CPU/gloo: 2-process weights equal 1-process weights, and a
+crash + resume equals an uninterrupted run; **NCCL on the two T4s is UNVERIFIED**). Expected ~1.9x faster: ~7 s/step, 3,000 steps ≈ 5.7 h (UNVERIFIED extrapolation from 13 s/step on one T4).
+Only rank 0 logs, checkpoints and uploads to the Hub; validation is split across the ranks. `accumulation` must be divisible by 2. Warm the caches first, then **smoke test 20 steps** before the long run:
+```bash
+%%bash
+cd /kaggle/working/HRM_JEV
+python -c "from huggingface_hub import snapshot_download as d; from src.models.hrm_decision import MODEL_ID, MODEL_REVISION as R; d(MODEL_ID, revision=R)"
+python -c "from src.data.records import load_split; load_split('train', 'data/raw')"
+torchrun --nproc_per_node=2 -m src.train --config configs/seed1_long.yaml --set run_id=smoke --set max_steps=20 --set eval_every=10 --set save_every=10 --set eval_rows=64
+# check: tok_per_s ≈ 2x the single-GPU ~470 in runs/smoke/metrics.jsonl, no NCCL error, skipped_steps low. Then the real run (resumable: rerun the same command):
+torchrun --nproc_per_node=2 -m src.train --config configs/seed1_long.yaml --set wandb_project=HRM_JEV_Finetune --set hub_repo=<hf-user>/hrm-jev-adapters > seed1_long.log 2>&1
+```
+If NCCL hangs or errors, try `export NCCL_P2P_DISABLE=1` (T4 pairs without peer-to-peer) before `torchrun`; gradients are only ~66 MB per step, so it costs almost nothing.
+Eval of the result: same shard commands as step 4 with `--run runs/seed1_long`.
 
 ## If the session dies (timeout, crash, quota, wiped disk)
 Checkpoints (adapter + readout + optimizer + scaler + step) are written every `save_every` steps (100 for seed1 ≈ 20 min of work) and, when

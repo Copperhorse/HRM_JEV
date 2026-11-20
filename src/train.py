@@ -2,6 +2,8 @@
 
     uv run python -m src.train --config configs/seed1.yaml [--set max_steps=50 --set run_id=probe]
 
+Two GPUs: `torchrun --nproc_per_node=2 -m src.train --config ...` runs the same recipe data-parallel (each rank takes
+half of every step's micro-batches; gradients are summed before the optimizer step), about 1.9x faster than one GPU.
 Resumable: the batch order is a pure function of (seed, epoch), option shuffling is seeded per
 micro-batch, and checkpoints hold adapter + readout + optimizer + scaler + step. Re-running the same
 command continues from the last checkpoint.
@@ -17,10 +19,12 @@ import random
 import shutil
 import subprocess
 import time
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
 import torch
+import torch.distributed as dist
 import yaml
 
 from .config import TrainConfig
@@ -110,8 +114,46 @@ def push_to_hub(cfg: TrainConfig, run_dir: Path) -> None:
         print(f"[train] WARNING: hub upload failed ({type(e).__name__}: {e}); training continues", flush=True)
 
 
+def _setup_dist(cfg: TrainConfig) -> tuple[int, int, bool]:
+    """(rank, world, we_created_the_process_group). World size 1 = plain single-process training."""
+    world = int(os.environ.get("WORLD_SIZE", "1"))
+    if world == 1:
+        return 0, 1, False
+    rank = int(os.environ["RANK"])
+    on_cuda = torch.device(cfg.device).type == "cuda"
+    if on_cuda:  # one process per GPU: rank r uses cuda:LOCAL_RANK
+        local = int(os.environ.get("LOCAL_RANK", rank))
+        cfg.device = f"cuda:{local}"
+        torch.cuda.set_device(local)
+    created = not dist.is_initialized()
+    if created:  # long timeout: rank 0 alone writes checkpoints / uploads to the Hub while the others wait
+        dist.init_process_group("nccl" if on_cuda else "gloo", timeout=timedelta(minutes=60))
+    if cfg.accumulation % world:
+        raise ValueError(f"accumulation ({cfg.accumulation}) must be divisible by the number of GPUs ({world})")
+    return rank, world, created
+
+
+def _allreduce_grads(params: list[torch.nn.Parameter]) -> None:
+    """Sum gradients over ranks. Each rank's loss is already scaled by 1/accumulation, so the sum equals the
+    single-GPU gradient. An inf/NaN on any rank becomes inf/NaN on all ranks, so every GradScaler skips together."""
+    grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+    flat = torch.cat([g.reshape(-1).float() for g in grads])
+    dist.all_reduce(flat)
+    off = 0
+    for p, g in zip(params, grads):
+        p.grad = flat[off:off + g.numel()].view_as(g).to(g.dtype)
+        off += g.numel()
+
+
 def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=None, resume: bool = True,
           _crash_after: int | None = None) -> dict:  # _crash_after: test hook simulating a crash
+    rank, world, owns_group = _setup_dist(cfg)
+    main = rank == 0
+
+    def barrier() -> None:
+        if world > 1:
+            dist.barrier()
+
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
     run_dir = cfg.run_dir
@@ -143,14 +185,16 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
 
     step, best_nll = 0, float("inf")
     ckpt = run_dir / "ckpt"
-    if resume and cfg.hub_repo and not (ckpt / "state.json").exists() and not (run_dir / "ckpt.old").exists():
-        try:  # local run dir missing (e.g. wiped Kaggle session): pull the latest checkpoint back from the Hub
-            if restore_run(run_dir, cfg.hub_repo):
-                print(f"[train] restored checkpoint for {cfg.run_id} from the Hub repo {cfg.hub_repo}", flush=True)
-        except Exception as e:  # noqa: BLE001
-            print(f"[train] no Hub checkpoint to resume from ({type(e).__name__}); starting fresh", flush=True)
-    if resume and not ckpt.exists() and (run_dir / "ckpt.old").exists():
-        os.replace(run_dir / "ckpt.old", ckpt)  # crashed between the two renames in save_checkpoint
+    if main:  # filesystem prep is done by rank 0 only; the other ranks wait, then read the result
+        if resume and cfg.hub_repo and not (ckpt / "state.json").exists() and not (run_dir / "ckpt.old").exists():
+            try:  # local run dir missing (e.g. wiped Kaggle session): pull the latest checkpoint back from the Hub
+                if restore_run(run_dir, cfg.hub_repo):
+                    print(f"[train] restored checkpoint for {cfg.run_id} from the Hub repo {cfg.hub_repo}", flush=True)
+            except Exception as e:  # noqa: BLE001
+                print(f"[train] no Hub checkpoint to resume from ({type(e).__name__}); starting fresh", flush=True)
+        if resume and not ckpt.exists() and (run_dir / "ckpt.old").exists():
+            os.replace(run_dir / "ckpt.old", ckpt)  # crashed between the two renames in save_checkpoint
+    barrier()
     if resume and (ckpt / "state.json").exists():
         state = json.loads((ckpt / "state.json").read_text())
         if (run_dir / "run.json").exists():
@@ -164,19 +208,28 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
         scaler.load_state_dict(torch.load(ckpt / "scaler.pt", map_location="cpu", weights_only=True))
         step, best_nll = state["step"], state["best_nll"]
         print(f"[train] resumed from step {step}", flush=True)
-    elif (run_dir / "metrics.jsonl").exists():
+    elif main and (run_dir / "metrics.jsonl").exists():
         (run_dir / "metrics.jsonl").unlink()
+    if world > 1:  # identical start on every rank (also guards against any init difference)
+        with torch.no_grad():
+            for p in all_params:
+                dist.broadcast(p.data, 0)
+    barrier()  # every rank has read run.json before rank 0 rewrites it
 
-    (run_dir / "run.json").write_text(json.dumps({
-        "config": cfg.to_dict(), "total_steps": total_steps, "train_rows": len(rows), "val_rows": len(val),
-        "dataset": [DATASET_ID, DATASET_REVISION], "model": [MODEL_ID, MODEL_REVISION], "git_commit": _git_commit(),
-        "torch": torch.__version__, "python": platform.python_version(),
-        "trainable_params": {k: sum(p.numel() for p in v) for k, v in groups.items()},
-    }, indent=2))
-    log = (run_dir / "metrics.jsonl").open("a")
-    tracker = Tracker(cfg, run_dir)
+    log = tracker = None
+    if main:
+        (run_dir / "run.json").write_text(json.dumps({
+            "config": cfg.to_dict(), "total_steps": total_steps, "train_rows": len(rows), "val_rows": len(val),
+            "dataset": [DATASET_ID, DATASET_REVISION], "model": [MODEL_ID, MODEL_REVISION], "git_commit": _git_commit(),
+            "torch": torch.__version__, "python": platform.python_version(), "world_size": world,
+            "trainable_params": {k: sum(p.numel() for p in v) for k, v in groups.items()},
+        }, indent=2))
+        log = (run_dir / "metrics.jsonl").open("a")
+        tracker = Tracker(cfg, run_dir)
 
     def log_row(row: dict) -> None:
+        if not main:
+            return
         log.write(json.dumps(row) + "\n")
         log.flush()
         tracker.log(row)
@@ -185,13 +238,19 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
     def run_eval() -> None:
         nonlocal best_nll
         t = time.time()
-        m = evaluate(predict(model, val, tokenizer, batch_size=cfg.eval_batch_size, device=cfg.device, dtype=cfg.dtype),
-                     [np.asarray(r.target) for r in val])
+        logits = predict(model, val[rank::world], tokenizer, batch_size=cfg.eval_batch_size, device=cfg.device,
+                         dtype=cfg.dtype)  # each rank scores its slice of the validation sample
+        if world > 1:
+            parts = [None] * world
+            dist.all_gather_object(parts, logits)
+            logits = [parts[i % world][i // world] for i in range(len(val))]
+        m = evaluate(logits, [np.asarray(r.target) for r in val])  # identical on every rank
         log_row({"step": step, "val": {k: m[k] for k in ("n", "hard_acc", "expected_acc", "nll", "brier", "ece")},
                  "eval_s": round(time.time() - t, 1)})
         if m["nll"] < best_nll:
             best_nll = m["nll"]
-            model.save(run_dir / "best")
+            if main:
+                model.save(run_dir / "best")
 
     model.train()
     t_log, tok_log, loss_log, skipped = time.time(), 0, [], 0
@@ -200,7 +259,7 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
         for g in opt.param_groups:
             g["lr"] = g["base_lr"] * factor
         opt.zero_grad(set_to_none=True)
-        for k in range(cfg.accumulation):
+        for k in range(rank, cfg.accumulation, world):  # rank r takes micro-batches r, r+world, ...
             midx = step * cfg.accumulation + k
             rng = random.Random(cfg.seed * 1_000_003 + 7919 * (midx + 1)) if cfg.shuffle_choice_options else None
             b = collate([rows[i] for i in micro[midx]], tokenizer, rng=rng).to(cfg.device)
@@ -212,6 +271,8 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
             scaler.scale(loss / cfg.accumulation).backward()
             loss_log.append(loss.item())
             tok_log += int(b.attention_mask.sum())
+        if world > 1:
+            _allreduce_grads(all_params)
         scaler.unscale_(opt)
         gnorm = torch.nn.utils.clip_grad_norm_(all_params, cfg.grad_clip)
         scale_before = scaler.get_scale()
@@ -222,8 +283,11 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
 
         if step % cfg.log_every == 0 or step == total_steps:
             dt = time.time() - t_log
-            log_row({"step": step, "loss": round(float(np.mean(loss_log)), 5), "grad_norm": round(float(gnorm), 4),
-                     "lr": opt.param_groups[0]["lr"], "tok_per_s": round(tok_log / dt), "skipped_steps": int(skipped),
+            tot = torch.tensor([sum(loss_log), len(loss_log), tok_log], dtype=torch.float64, device=cfg.device)
+            if world > 1:
+                dist.all_reduce(tot)  # loss mean and token count over all ranks
+            log_row({"step": step, "loss": round(float(tot[0] / tot[1]), 5), "grad_norm": round(float(gnorm), 4),
+                     "lr": opt.param_groups[0]["lr"], "tok_per_s": round(float(tot[2]) / dt), "skipped_steps": int(skipped),
                      "loss_scale": scaler.get_scale() if scaler.is_enabled() else None,
                      "mem_gb": round(torch.cuda.max_memory_allocated(torch.device(cfg.device)) / 2**30, 2)
                      if torch.cuda.is_available() and torch.device(cfg.device).type == "cuda" else None})
@@ -231,17 +295,23 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
         if step % cfg.eval_every == 0 and step != total_steps:
             run_eval()
         if step % cfg.save_every == 0 and step != total_steps:
-            save_checkpoint(run_dir, model, opt, scaler, {"step": step, "best_nll": best_nll})
-            push_to_hub(cfg, run_dir)
+            if main:
+                save_checkpoint(run_dir, model, opt, scaler, {"step": step, "best_nll": best_nll})
+                push_to_hub(cfg, run_dir)
+            barrier()
         if _crash_after is not None and step == _crash_after:
             raise RuntimeError("simulated crash")
 
     run_eval()
-    model.save(run_dir / "final")
-    save_checkpoint(run_dir, model, opt, scaler, {"step": step, "best_nll": best_nll})
-    log.close()
-    push_to_hub(cfg, run_dir)
-    tracker.finish({"best_val_nll": best_nll, "steps": step})
+    if main:
+        model.save(run_dir / "final")
+        save_checkpoint(run_dir, model, opt, scaler, {"step": step, "best_nll": best_nll})
+        log.close()
+        push_to_hub(cfg, run_dir)
+        tracker.finish({"best_val_nll": best_nll, "steps": step})
+    barrier()
+    if owns_group:
+        dist.destroy_process_group()
     return {"steps": step, "best_val_nll": best_nll, "run_dir": str(run_dir)}
 
 
