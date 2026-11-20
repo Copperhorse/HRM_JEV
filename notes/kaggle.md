@@ -175,3 +175,22 @@ python -m src.hub --run $R --repo <hf-user>/hrm-jev-adapters >> report_long.log 
 cat report_long.log
 ```
 Afterwards download `runs/seed1_long/preds/best/*.parquet` from the Output tab (only copy of the per-row predictions).
+
+## JevBench public items (231) on Colab or Kaggle: `src.jevbench_eval`
+Cheap, inference only (231 items, mean ~700 tokens, 1 item > 4,096 tokens counted wrong, never truncated). Reads the item files of
+`fstandhartinger/jevbench` as data; no JevBench code is executed. Scoring re-implements JevBench's definitions (read at commit `609a664`).
+Use it to *report* a placement next to the LEV/Kev numbers (UNVERIFIED, from arXiv 2610.20951), **never to choose between checkpoints** (JevBench: training on or selecting against the public split must be disclosed).
+```python
+# Colab, GPU runtime = T4
+import os; from google.colab import userdata
+os.environ["HF_TOKEN"] = userdata.get("HF_TOKEN")          # Colab Secrets, "Notebook access" on; never print it
+!git clone https://github.com/Copperhorse/HRM_JEV.git && git clone https://github.com/fstandhartinger/jevbench.git
+!git -C jevbench checkout 609a664e81f46e03731600bd7bd9f1b7a61257c5
+%cd HRM_JEV
+!pip install -q -r requirements.txt && pip uninstall -y torchao      # torchao only matters if Colab ships a conflicting one
+!python -m src.jevbench_eval --jevbench-dir ../jevbench --run runs/seed1 --ckpt best --hub-repo <hf-user>/hrm-jev-adapters --temperature 1.0656
+!python -m src.jevbench_eval --jevbench-dir ../jevbench --run runs/seed2 --ckpt best --hub-repo <hf-user>/hrm-jev-adapters --temperature 1.1170
+```
+Output: `runs/<id>/jevbench/best/{results.md,results.json,items.jsonl}` (per-item predictions; download them). `--temperature` is the value fitted on our own
+calibration split (Open-Jev data), not JevBench's; the table shows T=1 and calibrated side by side. For `seed1_long` take its temperature from `report_long.log`.
+Local check (not a result): pipeline ran on real weights on the RTX A2000, 70 items.

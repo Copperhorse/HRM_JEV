@@ -177,7 +177,12 @@ uv run python -m src.eval --run runs/seed1 --ckpt best --hub-repo <user>/<repo> 
 uv run python -m src.report --run runs/seed1 --ckpt best  # CPU: temperature fit + tables -> preds/<ckpt>/results.{json,md}
 ```
 
-Not built yet: baseline re-evaluation (`--baseline open-jev-2b`), multi-seed aggregation, packaging.
+uv run python -m src.jevbench_eval --jevbench-dir <clone of fstandhartinger/jevbench> --run runs/seed1 --temperature 1.0656   # 231 public JevBench items (GPU, minutes)
+```
+
+Not built yet: Open-Jev-2B baseline re-evaluation (needs bf16 + Qwen3.5 linear-attention kernels; reviewed `jev/model.py`: per-candidate prompt + linear head, T=1.519), multi-seed aggregation, packaging.
+
+```bash
 
 ## Architecture
 
