@@ -57,7 +57,7 @@ Read from `transformers/models/hrm_text/modeling_hrm_text.py` (5.23.0):
   pretraining. Decision in `decisions.md`: default `[0,3]`, ablate `[3,3]` if memory allows.
 
 ## 7. Timing / memory on Kaggle T4: VERIFIED for the default config (50-step probe, below); batch-size and `[3,3]` variants still to probe
-## 8. fp16 stability: PARTIAL (first 50 steps clean after initial scaler back-off, see §7 result); the 200-step `probe_fp16` is still PENDING
+## 8. fp16 stability: VERIFIED on Kaggle T4 for the real recipe (seed1 and seed2, 1,000 steps each, see notes/results.md): 3 skipped steps, all in the first ~10 steps, none afterwards; loss scale steady at 8192; no NaN/inf; the separate 200-step probe was not needed
 ## 9. Reproduce Open-Jev-2B card numbers on 1k rows: PENDING (needs GPU + Qwen3.5-2B + Open-Jev loader)
 The Open-Jev repo's code is untrusted third-party code; review before running. It scores each candidate in its own
 forward pass with a scalar Yes/No head, so our baseline comparison is on identical rows and metrics but not an identical prompt.
