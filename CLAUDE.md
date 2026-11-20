@@ -157,7 +157,7 @@ max option count; measured per-decision latency on a stated GPU.
 - During development, evaluate on a **fixed stratified sample** (e.g. 2k test + 2k OOD,
   ids saved once to `data/dev_eval_ids.json`; `src.eval --limit N` is the quick option).
 - Measured on one T4 (50-step probe, fp16, batch 4×4): ~465 tok/s, 3.4 GB peak. Extrapolated (UNVERIFIED): ~3 h for a 16k-row run,
-  ~15 h for a full English epoch; eval ~0.36 s/row (~3 h for calibration+test+OOD on one T4, ~1.5 h sharded over 2). Two T4s run two seeds
+  ~15 h for a full English epoch; eval measured at ~0.32 s/row (~2.7 h for calibration+test+OOD on one T4, ~1.4 h sharded over 2, per seed). Two T4s run two seeds
   in parallel; they do not speed up a single run. Details: `notes/phase0.md`.
 - **Local:** code, CPU-only analysis of saved predictions (`runs/<id>/preds/<ckpt>/<split>.parquet`), plots.
   CachyOS, HP ZBook, RTX A2000 8 GB, 16 GB RAM. Python env: `uv`. Shell: fish.
