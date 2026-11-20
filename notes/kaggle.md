@@ -60,10 +60,10 @@ Notes
   Optimizer checkpoints, predictions and base weights are never uploaded. Manual upload: `python -m src.hub --run runs/seed1 --repo <hf-user>/hrm-jev-adapters`.
   Download later: `hf download <hf-user>/hrm-jev-adapters --include "seed1/*" --local-dir adapters` (needs HF_TOKEN for a private repo).
 
-## One run on both GPUs (data-parallel; `configs/seed1_long.yaml` = 48k rows, 3,000 steps)
+## One run on both GPUs (data-parallel; `configs/seed1_long.yaml` = 60k rows, 3,750 steps)
 `torchrun --nproc_per_node=2 -m src.train ...` starts one process per T4. Each rank takes half of every step's micro-batches (batch 4 x accumulation 4 -> 2 per rank),
 gradients are summed before the optimizer step, so the recipe is the same as on one GPU (VERIFIED on CPU/gloo: 2-process weights equal 1-process weights, and a
-crash + resume equals an uninterrupted run; **NCCL on the two T4s is UNVERIFIED**). Expected ~1.9x faster: ~7 s/step, 3,000 steps ≈ 5.7 h (UNVERIFIED extrapolation from 13 s/step on one T4).
+crash + resume equals an uninterrupted run; **NCCL on the two T4s is UNVERIFIED**). Expected ~1.9x faster: ~7 s/step, 3,750 steps ≈ 7.3 h, plus ~1 h of validation (every 250 steps) and checkpoint uploads ≈ 8.3 h (UNVERIFIED extrapolation from 13 s/step on one T4).
 Only rank 0 logs, checkpoints and uploads to the Hub; validation is split across the ranks. `accumulation` must be divisible by 2. Warm the caches first, then **smoke test 20 steps** before the long run:
 ```bash
 %%bash
