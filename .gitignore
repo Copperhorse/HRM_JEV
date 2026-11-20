@@ -25,3 +25,7 @@ runs/
 
 # Notebooks
 .ipynb_checkpoints/
+
+# Local agent instructions / tooling
+CLAUDE.md
+.claude/
