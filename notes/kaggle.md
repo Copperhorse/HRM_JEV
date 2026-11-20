@@ -112,3 +112,67 @@ done
 ```
 `--restore-only` fetches only `best/` (or `final/` with `--ckpt final`) and `run.json`, not the optimizer checkpoint. A quick dev check: add `--limit 200`.
 Warm the dataset/model cache first (the two `!python -c ...` pre-download cells above) so parallel shards do not race on downloads.
+
+## Unattended notebook for `seed1_long` (Save & Run All; GPU T4 x2, Internet on, notebook private)
+Stop any open draft session first (double quota). Five cells, in order. Cell 3 is a gate: it aborts the notebook if NCCL fails or two GPUs are not ~2x faster,
+before the 8 h run starts. Rerunning the whole notebook after a crash resumes from the Hub checkpoint (the smoke test just repeats, ~5 min).
+`NCCL_P2P_DISABLE=1` avoids T4 peer-to-peer hangs; it costs almost nothing (66 MB of gradients per step).
+
+**Cell 1** (code)
+```python
+import torch; assert torch.cuda.device_count() == 2
+!cd /kaggle/working && git clone https://github.com/Copperhorse/HRM_JEV.git
+%cd /kaggle/working/HRM_JEV
+!pip install -q -r requirements.txt wandb
+!pip uninstall -y torchao
+```
+**Cell 2** (code): secrets, never print them
+```python
+import os
+from kaggle_secrets import UserSecretsClient
+s = UserSecretsClient()
+os.environ["WANDB_API_KEY"] = s.get_secret("WANDB_API_KEY")
+os.environ["WANDB_ENTITY"] = s.get_secret("WANDB_ENTITY")
+os.environ["HF_TOKEN"] = s.get_secret("HF_TOKEN")
+```
+**Cell 3**: warm caches + 30-step gate
+```bash
+%%bash
+set -euo pipefail
+cd /kaggle/working/HRM_JEV
+export NCCL_P2P_DISABLE=1
+python -c "from huggingface_hub import snapshot_download as d; from src.models.hrm_decision import MODEL_ID, MODEL_REVISION as R; d(MODEL_ID, revision=R)"
+python -c "from src.data.records import load_split; load_split('train', 'data/raw')"
+timeout 900 torchrun --nproc_per_node=2 -m src.train --config configs/seed1_long.yaml --set run_id=smoke --set max_steps=30 --set log_every=5 --set eval_every=15 --set save_every=20 --set eval_rows=64
+python - <<'EOF'
+import json, statistics
+rows = [json.loads(l) for l in open("runs/smoke/metrics.jsonl")]
+t = [r["tok_per_s"] for r in rows if "tok_per_s" in r and r["step"] >= 10]
+print("tok/s per window:", t, "median", statistics.median(t))
+assert statistics.median(t) > 750, "two GPUs are not ~2x one T4 (~470 tok/s): aborting before the long run"
+assert all(r["skipped_steps"] <= 8 for r in rows if "skipped_steps" in r), "too many fp16 skipped steps"
+print("gate passed")
+EOF
+```
+**Cell 4**: the run (~8 h)
+```bash
+%%bash
+set -euo pipefail
+cd /kaggle/working/HRM_JEV
+export NCCL_P2P_DISABLE=1
+torchrun --nproc_per_node=2 -m src.train --config configs/seed1_long.yaml --set wandb_project=HRM_JEV_Finetune --set hub_repo=<hf-user>/hrm-jev-adapters 2>&1 | tee seed1_long.log
+```
+**Cell 5**: eval on both GPUs, report, upload (~1.5 h)
+```bash
+%%bash
+set -euo pipefail
+cd /kaggle/working/HRM_JEV
+R=runs/seed1_long
+python -m src.eval --run $R --ckpt best --split calibration,test,ood --shard 0/2 --device cuda:0 > eval_long_0.log 2>&1 & p0=$!
+python -m src.eval --run $R --ckpt best --split calibration,test,ood --shard 1/2 --device cuda:1 > eval_long_1.log 2>&1 & p1=$!
+wait $p0; wait $p1
+python -m src.report --run $R --ckpt best > report_long.log 2>&1
+python -m src.hub --run $R --repo <hf-user>/hrm-jev-adapters >> report_long.log 2>&1
+cat report_long.log
+```
+Afterwards download `runs/seed1_long/preds/best/*.parquet` from the Output tab (only copy of the per-row predictions).
