@@ -83,3 +83,27 @@ Noul accuracy on the public items (n=74: 12 easy, 24 standard, 38 hard): easy 1.
 - **VERIFIED, not a prompt-format artefact:** our training noul questions never contain the "Yes means:/No means:" lines (0 of 48,907) but JevBench's do. Re-scoring the 74 noul items without those lines: seed1 standard 0.625 -> 0.708, hard 0.447 -> 0.368; seed2 standard 0.625 -> 0.708, hard 0.395 -> 0.421. Changes of 1-3 items in inconsistent directions: no effect.
 - **UNVERIFIED hypothesis:** 43% of train noul rows are structured-state generators (painting-geometry 11.8k, snake 9.4k) plus workflow-controls; only 1.8k are `reasoning-control-v1`. The model learned fact-to-label patterns that do not transfer to applying policy text. Kev-0.8B also scores only 36.9% on hard overall, so a small base model may simply lack the capacity; not tested.
 - Not done on purpose: no tuning against the public items (JevBench requires disclosing any training/selection on the public split). Open question for the next recipe: up-weighting `reasoning-control-v1` / customer-service noul, judged on our validation split and OOD, not on JevBench.
+
+## seed1_long (60k English rows, 3,750 steps planned): validation so far. IN PROGRESS, VERIFIED from the pasted training log (through step 3390)
+Config `configs/seed1_long.yaml`: same recipe as seed1, 2×T4 data-parallel (16 rows/step), cosine to 10% over 3,750 steps. Same fixed 1,000 English validation rows as seed1/seed2 (in-distribution, temperature NOT applied, **not test/OOD**; hard-acc standard error ≈ 0.8 points).
+Run not finished: no final checkpoint, no test/OOD numbers yet. 4 skipped fp16 steps total (all before step 2,050), no NaNs, 3.42 GB peak, ~740 tok/s.
+
+| step | hard acc | NLL | Brier | ECE | seed1 (16k) hard acc / NLL |
+|---:|---:|---:|---:|---:|---:|
+| 250 | 0.7814 | 0.4766 | 0.2473 | 0.0509 | 0.7962 / 0.4780 |
+| 500 | 0.8205 | 0.4192 | 0.2129 | 0.0420 | 0.8374 / 0.4171 |
+| 750 | 0.8553 | 0.3799 | 0.1874 | 0.0195 | 0.8564 / 0.3570 |
+| 1000 | 0.8786 | 0.3360 | 0.1669 | 0.0381 | 0.8912 / 0.3115 |
+| 1250 | 0.8902 | 0.3272 | 0.1585 | 0.0457 | |
+| 1500 | 0.9113 | 0.2859 | 0.1246 | 0.0251 | |
+| 1750 | 0.9176 | 0.2936 | 0.1265 | 0.0481 | |
+| 2000 | 0.9271 | 0.2591 | 0.1103 | 0.0305 | |
+| 2250 | 0.9282 | 0.2433 | 0.1039 | 0.0328 | |
+| 2500 | 0.9303 | 0.2129 | 0.0910 | 0.0192 | |
+| 2750 | 0.9356 | 0.2111 | 0.0888 | 0.0233 | |
+| 3000 | 0.9324 | 0.2063 | 0.0864 | 0.0190 | |
+| 3250 | **0.9430** | **0.2026** | **0.0830** | 0.0209 | |
+
+- Best so far (step 3250) vs seed1's final (step 1000): NLL −0.11, hard acc +5 points. The seed1 columns are not step-matched in learning rate: seed1's schedule had fully decayed by step 1000, the long run was still near peak LR.
+- NLL flattens after step ~2500 (0.213 → 0.211 → 0.206 → 0.203); differences between those checkpoints are within noise at n = 1,000. ECE bounces 0.019–0.048 (noise, uncalibrated).
+- Nothing here says whether the gain carries to OOD (seed1 OOD `choice` was the weak spot). UNVERIFIED until test/OOD are evaluated.
