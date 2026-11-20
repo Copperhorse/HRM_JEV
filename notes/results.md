@@ -56,3 +56,22 @@ OOD choice NLL is 1.46 / 1.38 (the weakest part). OOD ECE ≈ 0.077–0.079 even
 NCCL init/all-reduce/barriers work (`NCCL_P2P_DISABLE=1`). Throughput per 5-step window 780 / 727 / 541 (contains a validation pass) / 734 / 754 tok/s, i.e. ~740 clean, ~1.6x one T4 (~470).
 Loss and fp16 scaler normal (3 skipped steps in the first 25; val NLL 0.817 → 0.750 on 64 rows, noise). The speed gate (> 750) failed by 2% and aborted the notebook as designed;
 the threshold was my own arbitrary line, now > 650. Cause of the gap (VERIFIED by simulation on the real batches): unequal padded length between the two ranks' micro-batches; fixed by length-balanced assignment.
+
+## Public JevBench items (231), seed1 / seed2 at 1,000 steps: VERIFIED (local RTX A2000, fp16, 2026-11-20; ~5 min per seed)
+`python -m src.jevbench_eval` (JevBench's definitions re-implemented, items read as data; JevBench repo commit 609a664). T from our Open-Jev calibration split. 1 hard item (4,412 tokens) exceeds the context: counted wrong, not truncated.
+Selection hygiene: both seeds were chosen/trained before this was run; the public split was not used for any decision.
+
+| system | acc % | easy | standard | hard acc % | hard ECE | Intelligence |
+|---|---:|---:|---:|---:|---:|---:|
+| HRM-Text LoRA seed1 (T=1.0656) | 63.6 | 100.0 | 73.6 | 41.4 | 0.342 | 48.2 |
+| HRM-Text LoRA seed2 (T=1.1170) | 61.0 | 97.9 | 69.4 | 39.6 | 0.297 | 44.1 |
+| Kev-0.8B (published, UNVERIFIED) | 63.6 | | | 36.9 | 0.172 | 49.3 |
+| Qwen3-1.7B dense control (published, UNVERIFIED) | 63.6 | | | 34.2 | 0.253 | 50.0 |
+| LEV-1.4B depth 4 (published, UNVERIFIED) | 68.0 | | | 44.1 | 0.231 | 55.7 |
+| Kev-4B / LEV-2.6B d4 / Jev 1.13.0 (published, UNVERIFIED) | 75.8 / 76.2 / 86.6 | | | 54.1 / 56.8 / 73.0 | 0.112 / 0.192 / 0.086 | 67.2 / 67.3 / 82.2 |
+
+- Accuracy 95% CI (Wilson, n=231): seed1 57.3-69.6%. So level with Kev-0.8B / Qwen3-1.7B / LEV-1.4B within noise; clearly below Kev-4B, LEV-2.6B, Jev.
+- By kind (seed1/seed2): choice 0.647/0.619, **noul 0.595/0.568 (near chance for binary)**, score 0.722/0.722. Easy tier ~solved, hard tier ~40%.
+- **Calibration is poor here**: hard ECE 0.30-0.34 vs 0.11-0.25 for published rows (our temperature fitted on in-distribution Open-Jev data barely helps: 0.353 -> 0.342).
+- Seeds agree on 133 items, seed1-only 14, seed2-only 8. Different training data from the published rows (Kev data / closed), so this is a placement, not a matched comparison.
+- Open-Jev test 92% / OOD 85% vs JevBench 61-64%: the gap is domain shift (JevBench items are long policy / rule-application documents), not a bug in the harness (VERIFIED easy tier 98-100%).
