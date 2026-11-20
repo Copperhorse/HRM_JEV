@@ -23,3 +23,31 @@ Validation = fixed random sample of 1,000 English validation rows (same rows for
 - Validation pass: 1,000 rows in 318–321 s ≈ **0.32 s/row on one T4** (batch 16). Full calibration+test+OOD (30,729 rows) ≈ 2.7 h on one T4, ≈ 1.4 h sharded over two, per seed.
 - **Not comparable to Open-Jev-2B yet**: that needs test/OOD evaluation on identical rows (see `notes/kaggle.md`). Validation is in-distribution; OOD is the headline metric.
 - Logging note: seed2's `mem_gb` read 0.0 (metric queried the wrong CUDA device; fixed in `0d5387a`, training unaffected).
+
+## Test / OOD evaluation of `best/` (= step 1000), seed1 + seed2 (Kaggle T4 ×2, 2026-11-20): VERIFIED from `report_seed{1,2}.log` (user-supplied)
+`src.eval` on the full splits in canonical option order, `src.report`: one temperature fitted on the full calibration split (4,672 rows): **seed1 T = 1.0656, seed2 T = 1.1170**.
+NLL / Brier / ECE below use that temperature; hard accuracy excludes soft-target rows. Subset "full" (all rows) unless noted; the English subset differs by ≤ 0.1 point.
+
+| split | n (hard n) | metric | seed1 | seed2 | mean of 2 |
+|---|---|---|---:|---:|---:|
+| test | 10,356 (9,995) | hard acc | 0.9210 | 0.9098 | 0.9154 |
+| | | expected acc | 0.9016 | 0.8910 | 0.8963 |
+| | | NLL | 0.2177 | 0.2366 | 0.2272 |
+| | | Brier | 0.1066 | 0.1201 | 0.1134 |
+| | | ECE | 0.0095 | 0.0150 | 0.0123 |
+| ood | 15,701 (15,389) | hard acc | 0.8520 | 0.8414 | 0.8467 |
+| | | expected acc | 0.8445 | 0.8337 | 0.8391 |
+| | | NLL | 0.7183 | 0.7182 | 0.7183 |
+| | | Brier | 0.2531 | 0.2582 | 0.2557 |
+| | | ECE | 0.0786 | 0.0769 | 0.0778 |
+
+Hard accuracy by kind (full subset), seed1 / seed2: test choice 0.838 / 0.811, noul 0.937 / 0.929, score 0.966 / 0.962; **OOD choice 0.747 / 0.702**, noul 0.880 / 0.877, score 0.866 / 0.863.
+OOD choice NLL is 1.46 / 1.38 (the weakest part). OOD ECE ≈ 0.077–0.079 even after temperature (the calibration split is in-distribution, so T ≈ 1 and does not fix OOD overconfidence).
+
+- **Seed spread on the full splits is ~1 point of hard accuracy** (test 0.921 vs 0.910; OOD 0.852 vs 0.841), much smaller than the 3.8 points seen on the 1,000-row validation sample. Mean ± std over 2 seeds is not a reliable
+  estimate (test 91.5 ± 0.8, OOD 84.7 ± 0.8 points, sample std, n = 2); the plan still needs ≥ 3 seeds for a final claim.
+- **Comparison with the Open-Jev-2B card (UNVERIFIED, card numbers on a different row set: 10,532 test / 15,920 OOD including the omitted `wikispeedia-v1` rows; not our re-evaluation; item 9 pending):**
+  card test hard acc 94.71%, NLL 0.1954, Brier 0.0761, ECE 0.0116; card OOD hard acc 86.02%, NLL 0.8030, Brier 0.2465, ECE 0.1056.
+  Our 2-seed means: test hard acc −3.2 points, NLL worse by 0.03, Brier worse by 0.04; OOD hard acc −1.5 points, **NLL better by 0.085**, Brier worse by 0.009, ECE better (0.078 vs 0.106).
+  Context: 16k training rows, 1 pass, base (non-instruct) 1B model vs 80k rows, instruction-tuned 2B. No matched controls: no architecture claims.
+- Per-row predictions (`preds/best/*.parquet`) are only in the Kaggle version output (the Hub copy holds `results.*`); download them for local analysis by source/kind.
