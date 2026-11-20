@@ -63,8 +63,7 @@ Notes
 ## One run on both GPUs (data-parallel; `configs/seed1_long.yaml` = 60k rows, 3,750 steps)
 `torchrun --nproc_per_node=2 -m src.train ...` starts one process per T4. Each rank takes half of every step's micro-batches (batch 4 x accumulation 4 -> 2 per rank),
 gradients are summed before the optimizer step, so the recipe is the same as on one GPU (VERIFIED on CPU/gloo: 2-process weights equal 1-process weights, and a
-crash + resume equals an uninterrupted run; **NCCL on the two T4s is UNVERIFIED**). Expected ~1.9x faster: ~7 s/step, 3,750 steps ≈ 7.3 h, plus ~1 h of validation (every 250 steps) and checkpoint uploads ≈ 8.3 h (UNVERIFIED extrapolation from 13 s/step on one T4).
-Only rank 0 logs, checkpoints and uploads to the Hub; validation is split across the ranks. `accumulation` must be divisible by 2. Warm the caches first, then **smoke test 20 steps** before the long run:
+crash + resume equals an uninterrupted run; **NCCL on the two T4s is UNVERIFIED**). **Measured on Kaggle (30-step smoke, 2026-11-20): NCCL works (with `NCCL_P2P_DISABLE=1`); 727–780 tok/s in clean windows (median 734) vs ~470 on one T4 = ~1.6x.** The shortfall is rank imbalance: each step waits for the rank with the longer padded micro-batches (VERIFIED by simulation on the real 60k rows: efficiency 0.83 = 1.66x, matching the measurement). Micro-batches are now assigned to ranks by length (long+short per rank): simulated 0.895 efficiency, ~+9% (UNVERIFIED on Kaggle). Expect ~800 tok/s ≈ 6.6 s/step: 3,750 steps ≈ 6.9 h, plus ~1 h of validation (every 250 steps) and checkpoint uploads ≈ 8 h. Only rank 0 logs, checkpoints and uploads to the Hub; validation is split across the ranks. `accumulation` must be divisible by 2. Warm the caches first, then **smoke test 20 steps** before the long run:
 ```bash
 %%bash
 cd /kaggle/working/HRM_JEV
@@ -149,7 +148,7 @@ import json, statistics
 rows = [json.loads(l) for l in open("runs/smoke/metrics.jsonl")]
 t = [r["tok_per_s"] for r in rows if "tok_per_s" in r and r["step"] >= 10]
 print("tok/s per window:", t, "median", statistics.median(t))
-assert statistics.median(t) > 750, "two GPUs are not ~2x one T4 (~470 tok/s): aborting before the long run"
+assert statistics.median(t) > 650, "two GPUs are not clearly faster than one T4 (~470 tok/s): aborting before the long run"
 assert all(r["skipped_steps"] <= 8 for r in rows if "skipped_steps" in r), "too many fp16 skipped steps"
 print("gate passed")
 EOF

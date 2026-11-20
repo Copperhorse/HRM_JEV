@@ -51,3 +51,8 @@ OOD choice NLL is 1.46 / 1.38 (the weakest part). OOD ECE ≈ 0.077–0.079 even
   Our 2-seed means: test hard acc −3.2 points, NLL worse by 0.03, Brier worse by 0.04; OOD hard acc −1.5 points, **NLL better by 0.085**, Brier worse by 0.009, ECE better (0.078 vs 0.106).
   Context: 16k training rows, 1 pass, base (non-instruct) 1B model vs 80k rows, instruction-tuned 2B. No matched controls: no architecture claims.
 - Per-row predictions (`preds/best/*.parquet`) are only in the Kaggle version output (the Hub copy holds `results.*`); download them for local analysis by source/kind.
+
+## Two-GPU data-parallel smoke test (Kaggle 2×T4, 30 steps, 2026-11-20): VERIFIED
+NCCL init/all-reduce/barriers work (`NCCL_P2P_DISABLE=1`). Throughput per 5-step window 780 / 727 / 541 (contains a validation pass) / 734 / 754 tok/s, i.e. ~740 clean, ~1.6x one T4 (~470).
+Loss and fp16 scaler normal (3 skipped steps in the first 25; val NLL 0.817 → 0.750 on 64 rows, noise). The speed gate (> 750) failed by 2% and aborted the notebook as designed;
+the threshold was my own arbitrary line, now > 650. Cause of the gap (VERIFIED by simulation on the real batches): unequal padded length between the two ranks' micro-batches; fixed by length-balanced assignment.

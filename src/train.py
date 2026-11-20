@@ -114,6 +114,22 @@ def push_to_hub(cfg: TrainConfig, run_dir: Path) -> None:
         print(f"[train] WARNING: hub upload failed ({type(e).__name__}: {e}); training continues", flush=True)
 
 
+def assign_micro_batches(idxs: list[int], cost: list[float], world: int) -> list[list[int]]:
+    """Split one step's micro-batches over ranks so every rank gets the same count and similar total cost.
+
+    The step waits for its slowest rank, and padded length varies a lot between micro-batches (measured on the
+    real 60k rows: 17% slower-rank overhead with positional assignment vs ~7% balanced). Sort by cost, deal out
+    in snake order (0,1,1,0,0,1,...). The *set* of micro-batches per step is unchanged, so the gradient sum is too.
+    """
+    if world == 1:  # single process: original order, so single-GPU runs are unchanged
+        return [list(idxs)]
+    out: list[list[int]] = [[] for _ in range(world)]
+    for pos, i in enumerate(sorted(idxs, key=lambda i: (-cost[i], i))):
+        q, r = divmod(pos, world)
+        out[r if q % 2 == 0 else world - 1 - r].append(i)
+    return out
+
+
 def _setup_dist(cfg: TrainConfig) -> tuple[int, int, bool]:
     """(rank, world, we_created_the_process_group). World size 1 = plain single-process training."""
     world = int(os.environ.get("WORLD_SIZE", "1"))
@@ -127,7 +143,8 @@ def _setup_dist(cfg: TrainConfig) -> tuple[int, int, bool]:
         torch.cuda.set_device(local)
     created = not dist.is_initialized()
     if created:  # long timeout: rank 0 alone writes checkpoints / uploads to the Hub while the others wait
-        dist.init_process_group("nccl" if on_cuda else "gloo", timeout=timedelta(minutes=60))
+        dist.init_process_group("nccl" if on_cuda else "gloo", timeout=timedelta(minutes=60),
+                                **({"device_id": torch.device(cfg.device)} if on_cuda else {}))
     if cfg.accumulation % world:
         raise ValueError(f"accumulation ({cfg.accumulation}) must be divisible by the number of GPUs ({world})")
     return rank, world, created
@@ -173,6 +190,8 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
     if cfg.max_steps:
         total_steps = min(total_steps, cfg.max_steps)
     micro = micro[: total_steps * cfg.accumulation]
+    size = [len(r.question) + len(str(r.state)) for r in rows]  # prompt-length proxy (as in make_micro_batches)
+    micro_cost = [max(size[i] for i in m) for m in micro]
 
     model = model_factory(cfg, tokenizer)
     groups = model.trainable_parameters()
@@ -259,15 +278,15 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
         for g in opt.param_groups:
             g["lr"] = g["base_lr"] * factor
         opt.zero_grad(set_to_none=True)
-        for k in range(rank, cfg.accumulation, world):  # rank r takes micro-batches r, r+world, ...
-            midx = step * cfg.accumulation + k
+        step_idxs = list(range(step * cfg.accumulation, (step + 1) * cfg.accumulation))
+        for midx in assign_micro_batches(step_idxs, micro_cost, world)[rank]:  # cost-balanced share of this step
             rng = random.Random(cfg.seed * 1_000_003 + 7919 * (midx + 1)) if cfg.shuffle_choice_options else None
             b = collate([rows[i] for i in micro[midx]], tokenizer, rng=rng).to(cfg.device)
             with autocast_ctx(cfg.device, cfg.dtype):
                 logits = model(b.input_ids, b.attention_mask, b.token_type_ids, b.n_options)
             loss = decision_loss(logits, b.target, cfg.brier_weight)
             if not torch.isfinite(loss):
-                raise FloatingPointError(f"non-finite loss at step {step} (micro-batch {k}); run invalid")
+                raise FloatingPointError(f"non-finite loss at step {step} (micro-batch {midx}); run invalid")
             scaler.scale(loss / cfg.accumulation).backward()
             loss_log.append(loss.item())
             tok_log += int(b.attention_mask.sum())

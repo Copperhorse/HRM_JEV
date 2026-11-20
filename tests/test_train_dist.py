@@ -7,7 +7,7 @@ import torch
 import torch.multiprocessing as mp
 from transformers import AutoTokenizer
 
-from src.train import train
+from src.train import assign_micro_batches, train
 from tests.test_train import cfg_for, tiny_factory, weights
 
 
@@ -61,3 +61,14 @@ def test_two_rank_resume_reproduces_uninterrupted_run(tok, tmp_path):
 def test_accumulation_must_divide_by_world(tmp_path):
     with pytest.raises(Exception, match="divisible"):
         run_two(tmp_path, "bad", accumulation=3, max_steps=1)
+
+
+def test_assignment_is_a_balanced_partition():
+    cost = [5, 90, 40, 70, 1, 3, 200, 8]
+    for world, idxs in ((2, [0, 1, 2, 3]), (2, [4, 5, 6, 7]), (2, list(range(8))), (4, list(range(8)))):
+        parts = assign_micro_batches(idxs, cost, world)
+        assert sorted(i for p in parts for i in p) == idxs and {len(p) for p in parts} == {len(idxs) // world}
+        assert parts == assign_micro_batches(list(reversed(idxs)), cost, world)  # deterministic
+    a, b = assign_micro_batches([0, 1, 2, 3], cost, 2)
+    assert abs(sum(cost[i] for i in a) - sum(cost[i] for i in b)) < abs(cost[0] + cost[2] - cost[1] - cost[3])  # beats the positional split (ranks take 0,2 / 1,3)
+    assert assign_micro_batches([3, 4, 5, 6], cost, 1) == [[3, 4, 5, 6]]
