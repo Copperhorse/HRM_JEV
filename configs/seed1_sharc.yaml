@@ -1,0 +1,20 @@
+# seed1 recipe + ShARC rule-application rows (src/data/sharc.py). The 16k Open-Jev rows are IDENTICAL to seed1's (same seed, same max_rows),
+# so Open-Jev test/OOD/validation compare directly with seed1; the 8k ShARC rows are extra (24k rows = 1,500 steps = 1.5x seed1's compute).
+# ShARC: 6,000 utterances as the 4-way choice view + 2,000 distinct Yes/No utterances as the binary noul view (noul is our weakest kind on JevBench).
+# Selection (best/) stays on the Open-Jev validation sample; `val_sharc` (500 ShARC dev rows) is logged for information.
+# Run data-parallel on both T4s: torchrun --nproc_per_node=2 -m src.train --config configs/seed1_sharc.yaml
+run_id: seed1_sharc
+seed: 1
+dtype: fp16
+max_rows: 16000
+sharc_choice_rows: 6000
+sharc_noul_rows: 2000
+sharc_val_rows: 500
+batch_size: 4
+accumulation: 4
+lr: 2.0e-4
+readout_lr: 1.0e-4
+warmup_steps: 50
+eval_every: 250
+save_every: 200
+eval_rows: 1000

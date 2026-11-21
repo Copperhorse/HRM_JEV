@@ -23,6 +23,10 @@ class TrainConfig:
     # data
     english_only: bool = True
     max_rows: int | None = None  # seeded random subset of train; None = all
+    # extra training rows from ShARC (src/data/sharc.py; CC-BY-SA rule-application data). 0 = Open-Jev only (default).
+    sharc_choice_rows: int = 0  # utterances as the 4-way choice view (yes / no / irrelevant / ask a follow-up)
+    sharc_noul_rows: int = 0  # Yes/No utterances as the binary noul view (distinct from the choice rows when possible)
+    sharc_val_rows: int = 500  # fixed seeded sample of ShARC dev (choice view), logged as `val_sharc`; only used when a ShARC mix is on
     shuffle_choice_options: bool = True
     # optimisation
     epochs: float = 1.0

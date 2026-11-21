@@ -164,13 +164,16 @@ torchrun --nproc_per_node=2 -m src.train --config configs/seed1_long.yaml --set 
 **Cell 5**: eval on both GPUs, report, upload (~1.5 h)
 ```bash
 %%bash
-set -euo pipefail
+set -uo pipefail   # no -e: a failing shard must not skip the log dump below
 cd /kaggle/working/HRM_JEV
 R=runs/seed1_long
+# fetch every split once, before the shards start (two processes must not download the same parquet at once)
+python -c "from src.data.records import load_split; [load_split(s, 'data/raw') for s in ('calibration','test','ood')]" || exit 1
 python -m src.eval --run $R --ckpt best --split calibration,test,ood --shard 0/2 --device cuda:0 > eval_long_0.log 2>&1 & p0=$!
 python -m src.eval --run $R --ckpt best --split calibration,test,ood --shard 1/2 --device cuda:1 > eval_long_1.log 2>&1 & p1=$!
-wait $p0; wait $p1
-python -m src.report --run $R --ckpt best > report_long.log 2>&1
+rc=0; wait $p0 || rc=1; wait $p1 || rc=1
+if [ $rc -ne 0 ]; then echo "eval shard failed"; tail -n 40 eval_long_0.log; echo ----; tail -n 40 eval_long_1.log; exit 1; fi
+python -m src.report --run $R --ckpt best > report_long.log 2>&1 || { cat report_long.log; exit 1; }
 python -m src.hub --run $R --repo <hf-user>/hrm-jev-adapters >> report_long.log 2>&1
 cat report_long.log
 ```
@@ -194,3 +197,17 @@ os.environ["HF_TOKEN"] = userdata.get("HF_TOKEN")          # Colab Secrets, "Not
 Output: `runs/<id>/jevbench/best/{results.md,results.json,items.jsonl}` (per-item predictions; download them). `--temperature` is the value fitted on our own
 calibration split (Open-Jev data), not JevBench's; the table shows T=1 and calibrated side by side. For `seed1_long` take its temperature from `report_long.log`.
 Local check (not a result): pipeline ran on real weights on the RTX A2000, 70 items.
+
+## `seed1_long_sharc` (the best recipe: 60k Open-Jev rows + 8k ShARC rows), 2×T4 data-parallel, ~9 h
+Trained from the base model. Same notebook as `seed1_long` (secrets cell, pip, torchao uninstall); Internet on (rank 0 downloads the 7 MB ShARC zip, checksum-verified). `configs/seed1_sharc.yaml` is the 16k-row variant (3 h).
+```bash
+%%bash
+set -euo pipefail
+cd /kaggle/working/HRM_JEV
+export NCCL_P2P_DISABLE=1
+python -c "from huggingface_hub import snapshot_download as d; from src.models.hrm_decision import MODEL_ID, MODEL_REVISION as R; d(MODEL_ID, revision=R)"
+python -c "from src.data.records import load_split; [load_split(s, 'data/raw') for s in ('train','validation','calibration','test','ood')]"
+python -c "from src.data import sharc; sharc.fetch('data'); print(len(sharc.load_items('train', 'data')))"   # expect 21850
+torchrun --nproc_per_node=2 -m src.train --config configs/seed1_long_sharc.yaml --set wandb_project=HRM_JEV_Finetune --set hub_repo=<hf-user>/hrm-jev-adapters 2>&1 | tee seed1_long_sharc.log
+```
+Then the eval cell with `R=runs/seed1_long_sharc` (all splits pre-fetched above). Compare with `seed1_long` on Open-Jev test/OOD and read `val_sharc` in `metrics.jsonl`. Resume after a lost session: rerun the same cell (restores `ckpt/` from the Hub).

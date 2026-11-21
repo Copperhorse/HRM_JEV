@@ -54,6 +54,18 @@ def test_trains_logs_and_writes_artifacts(tok, tmp_path):
     assert run["config"]["seed"] == 1 and run["dataset"][1] and run["model"][1]
 
 
+def test_sharc_mix_trains_and_logs_val_sharc(tok, tmp_path):
+    """Real ShARC rows (downloaded + checksum-verified on first use) are appended to the Open-Jev rows and validated separately."""
+    cfg = cfg_for(tmp_path, "sh", max_rows=16, sharc_choice_rows=12, sharc_noul_rows=4, sharc_val_rows=8, max_steps=2)
+    out = train(cfg, model_factory=tiny_factory, tokenizer=tok)
+    assert out["steps"] == 2
+    rows = [json.loads(l) for l in (cfg.run_dir / "metrics.jsonl").read_text().splitlines()]
+    v = [r["val_sharc"] for r in rows if "val_sharc" in r]
+    assert v and v[0]["n"] == 8 and v[0]["nll"] == v[0]["nll"]
+    assert not [r for r in rows if "val" in r and r["val"]["n"] != 8]  # selection still on the Open-Jev sample
+    assert json.loads((cfg.run_dir / "run.json").read_text())["config"]["sharc_choice_rows"] == 12
+
+
 def test_resume_reproduces_uninterrupted_run(tok, tmp_path):
     full = cfg_for(tmp_path, "full", max_steps=4)
     train(full, model_factory=tiny_factory, tokenizer=tok)

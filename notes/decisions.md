@@ -28,3 +28,12 @@
   Cost: ~200 MB uploaded per `save_every`, paused training for the upload; private repo storage grows with each checkpoint version.
 - **Both GPUs:** one run per GPU in parallel (seed1 on cuda:0, seed2 on cuda:1) instead of DDP: same wall-clock and quota as one run, gives an early
   variance estimate, no distributed code. DDP would roughly halve one run's time but only gives one result.
+
+## ShARC mix (2026-11-21): `configs/seed1_sharc.yaml`, `src/data/sharc.py`
+Why: the JevBench gap is on free-text rule/policy application (Open-Jev train is 95% JSON-state generators), see `notes/jevbench_vs_openjev.md`. `SargeDev/jev-distill-corpus-v3` was rejected (contains 14,336 of our validation/calibration/test rows; labels distilled from a closed API).
+- Source: ShARC official zip (authors' site), SHA-256 pinned, read in place with `zipfile`. CC-BY-SA-3.0 (HF card `UCLNLP/sharc`); rule texts from public gov.uk / IRS pages. Share-alike consequences for a published adapter are UNVERIFIED (not legal advice): check before releasing weights.
+- VERIFIED properties: train/dev/test share 0 `tree_id`s (1 rule text crosses train/test); train = 21,850 utterances after exact-duplicate removal (yes 6,763 / no 7,028 / inquire 6,803 / irrelevant 1,256) but **only 619 distinct rule texts**; choice-view prompts p50 217 / p99 378 / max 481 tokens (short: this does NOT address JevBench's long-document hard items, median 656 tokens, 10% > 3,000).
+- Two views: `choice` (yes / no / irrelevant / ask a follow-up; all rows) and `noul` ([no, yes]; Yes/No rows only), disjoint utterances in a mix. State = rule text + scenario + answered follow-ups; no JevBench wording ("Yes means:" lines) is copied.
+- Mix = identical 16k Open-Jev rows as seed1 + 6,000 choice + 2,000 noul ShARC rows (24k rows, 1,500 steps, 1.5x seed1 compute). Not compute-matched to seed1: a positive result on Open-Jev/ShARC says "this mix helps", not "ShARC beats the same compute spent on Open-Jev".
+- Selection of `best/` unchanged (Open-Jev validation NLL); `val_sharc` (500 ShARC dev rows) is logged for information. ShARC `test` (8,276) is reserved for one final evaluation (no `src.eval` support yet).
+- Judge on: Open-Jev test/OOD vs seed1 (regression check), ShARC dev/test (did it learn the new data), and only then JevBench (report-only, never selection).

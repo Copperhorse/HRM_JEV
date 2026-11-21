@@ -1,0 +1,20 @@
+# Best recipe so far (seed1_long: 60k English Open-Jev rows) + 8k ShARC rule-application rows, trained from the base model (not from seed1_long).
+# 68k rows = 4,250 steps of 16 rows, ~9 h on 2xT4 data-parallel (fits one 12 h Kaggle session; resumable via save_every + hub_repo).
+# ShARC: 6,000 utterances as the 4-way choice view + 2,000 distinct Yes/No utterances as the binary noul view (src/data/sharc.py).
+# best/ is chosen on the Open-Jev validation sample (same 1,000 rows as every run); `val_sharc` (500 ShARC dev rows) is logged for information.
+#   torchrun --nproc_per_node=2 -m src.train --config configs/seed1_long_sharc.yaml
+run_id: seed1_long_sharc
+seed: 1
+dtype: fp16
+max_rows: 60000
+sharc_choice_rows: 6000
+sharc_noul_rows: 2000
+sharc_val_rows: 500
+batch_size: 4
+accumulation: 4
+lr: 2.0e-4
+readout_lr: 1.0e-4
+warmup_steps: 50
+eval_every: 250
+save_every: 200
+eval_rows: 1000

@@ -29,6 +29,7 @@ import yaml
 
 from .config import TrainConfig
 from .data.prompt import collate, letter_token_ids
+from .data import sharc
 from .data.records import DATASET_ID, DATASET_REVISION, Record, load_split
 from .metrics import evaluate
 from .models.hrm_decision import MODEL_ID, MODEL_REVISION, HrmDecisionModel, decision_loss, load_hrm
@@ -39,7 +40,7 @@ from .tracking import Tracker
 
 # Changing any of these between a checkpoint and its resume would silently mix two different recipes
 # (max_steps/epochs change the LR schedule length). dtype/device/eval/logging/hub settings may change freely.
-RESUME_KEYS = ("seed", "english_only", "max_rows", "shuffle_choice_options", "epochs", "max_steps", "batch_size", "accumulation",
+RESUME_KEYS = ("seed", "english_only", "max_rows", "sharc_choice_rows", "sharc_noul_rows", "shuffle_choice_options", "epochs", "max_steps", "batch_size", "accumulation",
                "lr", "readout_lr", "weight_decay", "warmup_steps", "grad_clip", "brier_weight", "lora_rank", "lora_alpha",
                "lora_dropout", "l_bp_cycles")
 
@@ -180,9 +181,21 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
 
         tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
 
+    use_sharc = bool(cfg.sharc_choice_rows or cfg.sharc_noul_rows)
+    sharc_dir = Path(cfg.data_dir).parent  # data/raw -> data (the zip lives in data/sharc/)
+    if use_sharc:  # download once (rank 0), the other ranks wait: two processes fetching the same file raced before
+        if main:
+            sharc.fetch(sharc_dir)
+        barrier()
     rows = load_split("train", cfg.data_dir, english_only=cfg.english_only)
     if cfg.max_rows:
         rows = random.Random(cfg.seed).sample(rows, min(cfg.max_rows, len(rows)))
+    if use_sharc:
+        rows = rows + sharc.sample_sharc(cfg.sharc_choice_rows, cfg.sharc_noul_rows, cfg.seed, sharc_dir)
+    val_sharc: list[Record] = []
+    if use_sharc and cfg.sharc_val_rows:
+        dev = sharc.load_sharc("dev", sharc_dir, view="choice")
+        val_sharc = random.Random(0).sample(dev, min(cfg.sharc_val_rows, len(dev)))  # fixed across runs
     val_all = load_split("validation", cfg.data_dir, english_only=True)
     val = random.Random(0).sample(val_all, min(cfg.eval_rows, len(val_all)))  # fixed across runs
     micro = make_micro_batches(rows, cfg)
@@ -254,6 +267,18 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
         tracker.log(row)
         print("[train]", json.dumps(row), flush=True)
 
+    def eval_sharc() -> None:
+        t = time.time()
+        lg = predict(model, val_sharc[rank::world], tokenizer, batch_size=cfg.eval_batch_size, device=cfg.device,
+                     dtype=cfg.dtype)
+        if world > 1:
+            parts = [None] * world
+            dist.all_gather_object(parts, lg)
+            lg = [parts[i % world][i // world] for i in range(len(val_sharc))]
+        m = evaluate(lg, [np.asarray(r.target) for r in val_sharc])
+        log_row({"step": step, "val_sharc": {k: m[k] for k in ("n", "hard_acc", "expected_acc", "nll", "brier", "ece")},
+                 "eval_s": round(time.time() - t, 1)})
+
     def run_eval() -> None:
         nonlocal best_nll
         t = time.time()
@@ -266,7 +291,9 @@ def train(cfg: TrainConfig, *, model_factory=default_model_factory, tokenizer=No
         m = evaluate(logits, [np.asarray(r.target) for r in val])  # identical on every rank
         log_row({"step": step, "val": {k: m[k] for k in ("n", "hard_acc", "expected_acc", "nll", "brier", "ece")},
                  "eval_s": round(time.time() - t, 1)})
-        if m["nll"] < best_nll:
+        if val_sharc:
+            eval_sharc()
+        if m["nll"] < best_nll:  # selection stays on the Open-Jev validation sample only
             best_nll = m["nll"]
             if main:
                 model.save(run_dir / "best")
