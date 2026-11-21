@@ -84,9 +84,9 @@ Noul accuracy on the public items (n=74: 12 easy, 24 standard, 38 hard): easy 1.
 - **UNVERIFIED hypothesis:** 43% of train noul rows are structured-state generators (painting-geometry 11.8k, snake 9.4k) plus workflow-controls; only 1.8k are `reasoning-control-v1`. The model learned fact-to-label patterns that do not transfer to applying policy text. Kev-0.8B also scores only 36.9% on hard overall, so a small base model may simply lack the capacity; not tested.
 - Not done on purpose: no tuning against the public items (JevBench requires disclosing any training/selection on the public split). Open question for the next recipe: up-weighting `reasoning-control-v1` / customer-service noul, judged on our validation split and OOD, not on JevBench.
 
-## seed1_long (60k English rows, 3,750 steps planned): validation so far. IN PROGRESS, VERIFIED from the pasted training log (through step 3390)
+## seed1_long (60k English rows, 3,750 steps): training + validation table + test/OOD (below). VERIFIED from the Kaggle logs
 Config `configs/seed1_long.yaml`: same recipe as seed1, 2×T4 data-parallel (16 rows/step), cosine to 10% over 3,750 steps. Same fixed 1,000 English validation rows as seed1/seed2 (in-distribution, temperature NOT applied, **not test/OOD**; hard-acc standard error ≈ 0.8 points).
-Run not finished: no final checkpoint, no test/OOD numbers yet. 4 skipped fp16 steps total (all before step 2,050), no NaNs, 3.42 GB peak, ~740 tok/s.
+Run finished all 3,750 steps (2026-11-20, 2×T4, ~8 h). 4 skipped fp16 steps total (all before step 2,050), no NaNs, 3.42 GB peak, ~740 tok/s. No test/OOD numbers yet.
 
 | step | hard acc | NLL | Brier | ECE | seed1 (16k) hard acc / NLL |
 |---:|---:|---:|---:|---:|---:|
@@ -102,8 +102,53 @@ Run not finished: no final checkpoint, no test/OOD numbers yet. 4 skipped fp16 s
 | 2500 | 0.9303 | 0.2129 | 0.0910 | 0.0192 | |
 | 2750 | 0.9356 | 0.2111 | 0.0888 | 0.0233 | |
 | 3000 | 0.9324 | 0.2063 | 0.0864 | 0.0190 | |
-| 3250 | **0.9430** | **0.2026** | **0.0830** | 0.0209 | |
+| 3250 | 0.9430 | 0.2026 | 0.0830 | 0.0209 | |
+| 3500 | **0.9440** | 0.1988 | 0.0808 | 0.0202 | |
+| 3750 (final) | 0.9388 | **0.1887** | **0.0770** | **0.0170** | |
 
-- Best so far (step 3250) vs seed1's final (step 1000): NLL −0.11, hard acc +5 points. The seed1 columns are not step-matched in learning rate: seed1's schedule had fully decayed by step 1000, the long run was still near peak LR.
-- NLL flattens after step ~2500 (0.213 → 0.211 → 0.206 → 0.203); differences between those checkpoints are within noise at n = 1,000. ECE bounces 0.019–0.048 (noise, uncalibrated).
+- `best/` is the final step (3750, lowest val NLL 0.1887; hard acc 0.9388 is 0.5 points below step 3500, within noise at n = 1,000). Best (step 3750) vs seed1's final (step 1000): NLL −0.11, hard acc +5 points. The seed1 columns are not step-matched in learning rate: seed1's schedule had fully decayed by step 1000, the long run was still near peak LR.
+- NLL flattens after step ~2500 (0.213 → 0.211 → 0.206 → 0.203 → 0.199 → 0.189); differences between those checkpoints are within noise at n = 1,000. ECE bounces 0.019–0.048 (noise, uncalibrated).
 - Nothing here says whether the gain carries to OOD (seed1 OOD `choice` was the weak spot). UNVERIFIED until test/OOD are evaluated.
+- The first post-training eval cell failed after 17 s with `FileNotFoundError` on the `calibration` parquet (both shards fetched the split concurrently; only `train` had been pre-fetched). Fixed by fetching all splits before launching the shards (`notes/kaggle.md`). Not a checkpoint problem.
+
+### seed1_long test / OOD, `best/` (= step 3750), VERIFIED from the `HRM_FINETUNE_EVAL` notebook log (Kaggle 2×T4, 2026-11-21, ~83 min for calibration+test+OOD sharded over 2 GPUs)
+One seed. One temperature fitted on the full calibration split (4,672 rows): **T = 1.0823**. NLL / Brier / ECE use it (`ECE raw` is T = 1). Hard accuracy excludes soft-target rows. Full split (English subset is within 0.1 point).
+
+| split | n (hard n) | metric | seed1_long (60k, 3,750 steps) | seed1 (16k, 1,000 steps) | Δ |
+|---|---|---|---:|---:|---:|
+| test | 10,356 (9,995) | hard acc | **0.9626** | 0.9210 | +0.042 |
+| | | expected acc | 0.9425 | 0.9016 | +0.041 |
+| | | NLL | 0.1224 | 0.2177 | −0.095 |
+| | | Brier | 0.0511 | 0.1066 | −0.056 |
+| | | ECE (raw) | 0.0047 (0.0065) | 0.0095 | −0.005 |
+| ood | 15,701 (15,389) | hard acc | **0.8875** | 0.8520 | +0.036 |
+| | | expected acc | 0.8796 | 0.8445 | +0.035 |
+| | | NLL | 0.8810 | 0.7183 | **+0.163 (worse)** |
+| | | Brier | 0.1987 | 0.2531 | −0.054 |
+| | | ECE (raw) | 0.0852 (0.0875) | 0.0786 | +0.007 (worse) |
+
+Hard accuracy by kind (full), seed1_long vs seed1: test choice 0.9004 vs 0.838, noul 0.9797 vs 0.937, score 0.9750 vs 0.966; **OOD choice 0.8014 vs 0.747**, noul 0.9174 vs 0.880, score 0.8700 vs 0.866.
+OOD NLL by kind: choice 1.578, noul 0.580, score 1.172 (seed1 choice 1.46).
+
+- **VERIFIED:** more data and steps helped accuracy on both splits (+4.2 test, +3.6 OOD points; OOD choice +5.4), and test calibration/NLL improved a lot. **OOD NLL got worse (0.718 -> 0.881) and OOD ECE did not improve (0.079 -> 0.085) even though OOD accuracy rose:** the model is more confident on the OOD rows it gets wrong. Temperature does not fix it (T = 1.08 fitted in-distribution; raw OOD ECE 0.0875).
+- Caveat: seed1 and seed1_long are not a clean ablation: they differ in rows (60k vs 16k), steps, and the LR schedule length, and each is one seed (seed-to-seed spread of the 16k recipe was ~1 point on test/OOD).
+- **Comparison with the Open-Jev-2B card (UNVERIFIED: card numbers, 10,532 test / 15,920 OOD rows including the omitted `wikispeedia-v1` rows; not our re-evaluation; baseline item 9 still pending):** card test hard acc 94.71%, NLL 0.1954, Brier 0.0761, ECE 0.0116; card OOD hard acc 86.02%, NLL 0.8030, Brier 0.2465, ECE 0.1056.
+  Ours: test hard acc +1.55 points, NLL better by 0.073, Brier better by 0.025, ECE 0.0047 vs 0.0116; OOD hard acc +2.73 points, Brier better by 0.048, ECE 0.0852 vs 0.1056, **but OOD NLL worse by 0.078 (0.881 vs 0.803)**.
+  Context: single seed, 60k English rows vs the card's 80k, a **base** 1B model vs an instruction-tuned 2B. Row sets differ and the baseline is not re-run on our rows, so this is a lead, not a claim; no architecture claim (no matched controls). SatellaJev-100M card (82.03 / 72.09) is below ours on both splits, also UNVERIFIED and on slightly different rows.
+- **VERIFIED locally:** the per-row predictions (`seed1_long_preds.tgz`, 424,577 bytes) were downloaded to `runs/seed1_long/preds/best/` (gitignored; keep a backup, it is the only copy besides the Kaggle output) and `uv run python -m src.report --run runs/seed1_long --ckpt best` on the CPU reproduces the Kaggle `results.md` byte for byte (T = 1.0823). Shard row counts add up to the split sizes (calibration 2,336 + 2,336; test 5,178 × 2; OOD 7,851 + 7,850). Eval speed 0.28–0.31 s/row per T4 (shard 1: 80 min total).
+- Next (not done): re-evaluate Open-Jev-2B on identical rows (item 9); seeds 2-3 for this recipe; decide on the OOD-overconfidence issue using validation/OOD, not JevBench. No leaderboard submission yet.
+
+### seed1_long on the 231 public JevBench items: VERIFIED (local RTX A2000, fp16, 2026-11-21, ~3 min; `src.jevbench_eval`, JevBench data at commit `609a664`, T = 1.0823 from our calibration split)
+Reported only; not used to choose a checkpoint (`best/` was picked on validation NLL before this run). Raw outputs: `runs/seed1_long/jevbench/best/{results.md,items.jsonl}`.
+
+| model | acc % | easy | standard | hard acc % | hard ECE (T=1 / T fitted) | Intelligence |
+|---|---:|---:|---:|---:|---:|---:|
+| seed1_long (60k rows, 3,750 steps) | **63.6** | 100.0 | 73.6 | 41.4 | 0.324 / 0.311 | 48.2 |
+| seed1 (16k, 1,000 steps) | 63.6 | 100.0 | 73.6 | 41.4 | 0.353 / 0.342 | 48.2 |
+| seed2 (16k, 1,000 steps) | 61.0 | 97.9 | 69.4 | 39.6 | 0.30 | |
+
+- **VERIFIED: 4.2 points more Open-Jev test accuracy did not move JevBench.** seed1_long and seed1 have identical accuracy, tier scores and Intelligence. Item-level: 135 items right in both, 12 only seed1, 12 only seed1_long (flips cancel). 95% CI is 57.3-69.6 (n = 231, about ±6 points), so any difference under ~6 points is not detectable here.
+- By kind (seed1_long / seed1): choice 64.7 / 64.7, noul 58.1 / 59.5, score 77.8 / 72.2 (n = 18). Hard noul 17/38 correct in both; predicted "yes" on 28/38 (expected yes 17/38; seed1 26/38), the same yes bias described above.
+- Hard ECE is slightly lower (0.324 vs 0.353 raw) but still above every published row (0.086-0.253). The published rows are UNVERIFIED (LEV paper, their harness, other training data), so this is a rough placement only: same accuracy as Kev-0.8B and Qwen3-1.7B (63.6), hard accuracy above both (36.9, 34.2) and below LEV-1.4B (44.1), Intelligence 48.2 vs Kev-0.8B 49.3.
+- Reading (UNVERIFIED hypothesis, consistent with the Open-Jev OOD NLL rising): the longer run fits Open-Jev's distribution better but does not improve transfer to JevBench's policy-text items.
+
