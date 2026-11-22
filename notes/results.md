@@ -186,3 +186,15 @@ Hard accuracy 42.3% (47/111).
 - **Confidence is informative but overconfident:** accuracy 0.17 / 0.33 / 0.45 / 0.52 / 0.75 across confidence bins <0.5 / 0.5-0.7 / 0.7-0.9 / 0.9-0.99 / >=0.99. 13 wrong answers have confidence >= 0.9; judge_hard has mean confidence 0.93 at chance accuracy.
 - **Option count:** 4 options 51%, 5 options 24%, 6 options 0/4; noul: expected "no" was predicted "yes" on 16 of 21 items (yes bias).
 - Reading (UNVERIFIED): the failures look like trap/numeric/probability reasoning that a single-forward-pass readout of a 1B base model cannot do, rather than missing format or length coverage. Not tested: whether training data from these families would help.
+
+## seed1_long vs Open-Jev-2B on the rows both evaluated (card minus `wikispeedia-v1`). Card numbers UNVERIFIED (not re-run); row match VERIFIED
+`evaluation/full-data.json` on the Open-Jev-2B card has per-source counts and metrics. Subtracting its `wikispeedia-v1` source (176 test / 219 OOD rows, the only rows absent from `release-v2-redistributable`) gives card totals on 10,356 / 15,701 rows with **hard_n 9,995 / 15,389: identical to ours**. Script: `scripts/compare_open_jev_2b_card.py`. Ours: `seed1_long best/`, T = 1.0823 (card's own T = 1.5188, fitted on 512 rows).
+| split | model | hard acc | expected acc | NLL | Brier |
+|---|---|---:|---:|---:|---:|
+| test | Open-Jev-2B (card) | 0.9500 | 0.9308 | 0.1612 | 0.0718 |
+| test | **HRM-Text LoRA (ours)** | **0.9626** | **0.9425** | **0.1224** | **0.0511** |
+| OOD | Open-Jev-2B (card) | 0.8613 | 0.8539 | **0.7841** | 0.2455 |
+| OOD | **HRM-Text LoRA (ours)** | **0.8875** | **0.8796** | 0.8810 | **0.1987** |
+- **A win on accuracy and Brier, on both splits:** hard acc +1.26 (test) and +2.62 (OOD) points, Brier better on both. Largest per-source gaps (hard acc, ours - card): OOD snake +9.3, test reasoning-control +8.5, OOD reasoning-control +5.7, test snake +5.1, tic-tac-toe +4.7.
+- **A loss on OOD NLL (0.881 vs 0.784):** driven by painting-geometry (44% of OOD rows): NLL 1.77 vs 1.43 despite higher accuracy (0.817 vs 0.805), i.e. more confident when wrong. Also behind on vizdoom (test -0.2, OOD -2.4 points), tile_platformer (-1.0), workflow-controls (-0.6 test, 0.0 OOD).
+- **Caveats:** one seed each way. Our seed-to-seed spread for the 16k recipe was ~1 point, so the +1.3 on test is about one spread; +2.6 on OOD is clearer. Different base (base 1B vs instruct 2B), different recipe, our train rows 60k English of 79k vs the card's 80,816 (incl. 1,700 Wiki rows), prompts differ (their per-candidate scalar head vs our letter readout). Temperatures differ (1.08 fitted on 4,672 rows vs 1.52 on 512). ECE not recomputed (binned, cannot be subtracted). Not a re-run of their model, and no architecture claim.
