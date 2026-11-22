@@ -152,3 +152,19 @@ Reported only; not used to choose a checkpoint (`best/` was picked on validation
 - Hard ECE is slightly lower (0.324 vs 0.353 raw) but still above every published row (0.086-0.253). The published rows are UNVERIFIED (LEV paper, their harness, other training data), so this is a rough placement only: same accuracy as Kev-0.8B and Qwen3-1.7B (63.6), hard accuracy above both (36.9, 34.2) and below LEV-1.4B (44.1), Intelligence 48.2 vs Kev-0.8B 49.3.
 - Reading (UNVERIFIED hypothesis, consistent with the Open-Jev OOD NLL rising): the longer run fits Open-Jev's distribution better but does not improve transfer to JevBench's policy-text items.
 
+
+## seed1_long_sharc (60k Open-Jev + 8k ShARC, 4,250 steps): training + JevBench. VERIFIED from the Kaggle log and a local run
+Config `configs/seed1_long_sharc.yaml` = `seed1_long` + 6,000 ShARC 4-way rows + 2,000 ShARC Yes/No rows (disjoint utterances), trained from the base model, 2×T4.
+Open-Jev test/OOD NOT evaluated for this run yet (JevBench first, by choice).
+
+**Validation** (same fixed 1,000 English Open-Jev rows, no temperature, not test/OOD; hard-acc SE ≈ 0.8 pts): `best/` = step 4000 (NLL 0.1939, hard acc 0.9419). seed1_long best was step 3750 (NLL 0.1887, hard acc 0.9388). Final step 4250: NLL 0.2016. Differences are within noise; adding ShARC did not visibly hurt Open-Jev validation. 4 fp16 skipped steps in total, ~800 tok/s.
+**ShARC dev** (500 rows, 4-way view, `val_sharc`): hard acc 0.71-0.80, plateau from step ~1000 (0.786), peak 0.800 at step 3250, 0.782 at the end. NLL rose from 0.54 (step 1000) to 0.65, ECE ~0.1: overconfident. Chance 25%, majority class (yes) 35.4% (VERIFIED on the dev file). No ShARC published number checked.
+
+### JevBench 231 public items, `best/` (step 4000), T = 1.0823 borrowed from seed1_long (no calibration run for this checkpoint; accuracy does not depend on T), local RTX A2000, JevBench commit `609a664`
+| model | acc % | easy | standard | hard | hard ECE (T=1.0823) | Intelligence |
+|---|---:|---:|---:|---:|---:|---:|
+| seed1_long_sharc | **64.9** | 100.0 | 76.4 | 42.3 | 0.320 | 50.4 |
+| seed1_long | 63.6 | 100.0 | 73.6 | 41.4 | 0.311 | 48.2 |
+- **VERIFIED: ShARC did not measurably move JevBench.** +1.3 points = 3 items, far inside the ±6-point CI (58.6-70.8). Item-level: 139 right in both, 8 only seed1_long, 11 only seed1_long_sharc.
+- By kind (long -> sharc): choice 64.7 -> 65.5, noul 58.1 -> 62.2, score 77.8 -> 72.2 (n = 18). Hard noul 17/38 correct in both, "yes" predicted on 28/38 in both: the yes bias is unchanged.
+- Hard-tier ECE slightly worse (0.311 -> 0.320, T=1.0823); hard tier still adversarial and long, which ShARC (short prompts) does not address.
