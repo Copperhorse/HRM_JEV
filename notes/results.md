@@ -168,3 +168,21 @@ Open-Jev test/OOD NOT evaluated for this run yet (JevBench first, by choice).
 - **VERIFIED: ShARC did not measurably move JevBench.** +1.3 points = 3 items, far inside the ±6-point CI (58.6-70.8). Item-level: 139 right in both, 8 only seed1_long, 11 only seed1_long_sharc.
 - By kind (long -> sharc): choice 64.7 -> 65.5, noul 58.1 -> 62.2, score 77.8 -> 72.2 (n = 18). Hard noul 17/38 correct in both, "yes" predicted on 28/38 in both: the yes bias is unchanged.
 - Hard-tier ECE slightly worse (0.311 -> 0.320, T=1.0823); hard tier still adversarial and long, which ShARC (short prompts) does not address.
+
+### JevBench hard tier (111 items): where `seed1_long_sharc` fails. VERIFIED (CPU analysis of `runs/*/jevbench/best/items.jsonl` + the hard.jsonl `family` field; n per family is small, so only large gaps mean anything)
+Hard accuracy 42.3% (47/111).
+| family | n | acc | chance | mean conf | median chars |
+|---|---:|---:|---:|---:|---:|
+| long_policy | 19 | 0.16 | 0.30 | 0.58 | 12,685 |
+| temporal_numeric | 15 | 0.13 | 0.31 | 0.69 | 1,814 |
+| judge_hard | 17 | 0.47 | 0.50 | 0.93 | 1,373 |
+| probability | 10 | 0.30 | 0.38 | 0.74 | 2,477 |
+| tradeoff | 6 | 0.17 | 0.31 | 0.79 | 2,468 |
+| multi_hop | 18 | 0.61 | 0.25 | 0.67 | 10,730 |
+| trap / adversarial / ambiguous / routing | 8/6/7/5 | 0.75 / 0.83 / 0.71 / 0.60 | ~0.2-0.4 | | |
+- **Length is not the explanation.** multi_hop is as long as long_policy (~11-13k chars) yet 61% right; accuracy by length tercile is 0.57 / 0.32 / 0.38 (short / mid / long), not monotone.
+- **Four families (long_policy, temporal_numeric, judge_hard, probability; 61 items) sit at or below chance.** With n = 15-19 each, being below chance is suggestive, not significant (about p = 0.1 for the two worst).
+- **The errors are systematic, not noise:** of 59 items both seed1_long and seed1_long_sharc get wrong, 52 get the same wrong answer.
+- **Confidence is informative but overconfident:** accuracy 0.17 / 0.33 / 0.45 / 0.52 / 0.75 across confidence bins <0.5 / 0.5-0.7 / 0.7-0.9 / 0.9-0.99 / >=0.99. 13 wrong answers have confidence >= 0.9; judge_hard has mean confidence 0.93 at chance accuracy.
+- **Option count:** 4 options 51%, 5 options 24%, 6 options 0/4; noul: expected "no" was predicted "yes" on 16 of 21 items (yes bias).
+- Reading (UNVERIFIED): the failures look like trap/numeric/probability reasoning that a single-forward-pass readout of a 1B base model cannot do, rather than missing format or length coverage. Not tested: whether training data from these families would help.
